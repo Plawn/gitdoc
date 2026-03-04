@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 # HTTP
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 tokio = { version = "1", features = ["full"] }
 
 # Git
@@ -27,7 +27,12 @@ tree-sitter-typescript = "0.23"
 tree-sitter-javascript = "0.23"
 
 # Storage
-rusqlite = { version = "0.32", features = ["bundled"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "migrate"] }
+pgvector = { version = "0.4", features = ["sqlx"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Search
+tantivy = "0.22"
 
 # Serde
 serde = { version = "1", features = ["derive"] }
@@ -36,13 +41,21 @@ serde_json = "1"
 # Regex
 regex = "1"
 
+# HTTP (async, for embedding providers)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Config
+toml = "0.8"
+
 # Utils
 anyhow = "1"
 sha2 = "0.10"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 hex = "0.4"
 streaming-iterator = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }

@@ -1,29 +1,66 @@
-use gitdoc_server::{AppState, config, db};
-use axum::{Router, routing::{get, post}};
+use gitdoc_server::{AppState, config, db, embeddings, search};
+use axum::{Router, routing::{get, post, delete}};
+use tower_http::trace::TraceLayer;
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
-        )
-        .init();
+    let cfg = config::Config::load();
 
-    let cfg = config::Config::from_env();
-    let database = db::Database::open(&cfg.db_path)?;
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info".into());
+
+    if cfg.log_format == "json" {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .json()
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .init();
+    }
+
+    let database = db::Database::connect(&cfg.database_url).await?;
+    let search_index = search::SearchIndex::open(&cfg.index_path)?;
+
+    let embedder: Option<Arc<dyn embeddings::EmbeddingProvider>> = match &cfg.embedding {
+        Some(ecfg) => {
+            match embeddings::create_provider(ecfg) {
+                Ok(provider) => {
+                    tracing::info!(provider = %ecfg.provider, "embedding provider initialized");
+                    Some(Arc::from(provider))
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to create embedding provider, continuing without embeddings");
+                    None
+                }
+            }
+        }
+        None => {
+            tracing::info!("no embedding provider configured (set COHERE_KEY or OPENAI_API_KEY)");
+            None
+        }
+    };
+
+    let bind_addr = cfg.bind_addr;
+
     let state = Arc::new(AppState {
         db: Arc::new(database),
+        search: Arc::new(search_index),
+        embedder,
+        config: Arc::new(cfg),
     });
 
     use gitdoc_server::api::snapshots;
+    use gitdoc_server::api::search as search_api;
 
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/repos", post(gitdoc_server::api::repos::create_repo).get(gitdoc_server::api::repos::list_repos))
-        .route("/repos/{repo_id}", get(gitdoc_server::api::repos::get_repo))
+        .route("/repos/{repo_id}", get(gitdoc_server::api::repos::get_repo).delete(gitdoc_server::api::repos::delete_repo))
         .route("/repos/{repo_id}/index", post(gitdoc_server::api::repos::index_repo))
+        .route("/repos/{repo_id}/fetch", post(gitdoc_server::api::repos::fetch_repo))
         .route("/snapshots/{snapshot_id}/overview", get(snapshots::get_overview))
         .route("/snapshots/{snapshot_id}/docs", get(snapshots::list_docs))
         .route("/snapshots/{snapshot_id}/docs/{*path}", get(snapshots::get_doc_content))
@@ -31,11 +68,18 @@ async fn main() -> anyhow::Result<()> {
         .route("/snapshots/{snapshot_id}/symbols/{symbol_id}", get(snapshots::get_snapshot_symbol))
         .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/references", get(snapshots::get_symbol_references))
         .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/implementations", get(snapshots::get_symbol_implementations))
+        .route("/snapshots/{from_id}/diff/{to_id}", get(snapshots::diff_symbols))
+        .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
+        .route("/snapshots/{snapshot_id}/search/docs", get(search_api::search_docs))
+        .route("/snapshots/{snapshot_id}/search/symbols", get(search_api::search_symbols))
+        .route("/snapshots/{snapshot_id}/search/semantic", get(search_api::search_semantic))
         .route("/symbols/{symbol_id}", get(snapshots::get_symbol))
+        .route("/admin/gc", post(search_api::gc))
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(cfg.bind_addr).await?;
-    tracing::info!("gitdoc-server listening on {}", cfg.bind_addr);
+    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+    tracing::info!("gitdoc-server listening on {}", bind_addr);
     axum::serve(listener, app).await?;
 
     Ok(())
