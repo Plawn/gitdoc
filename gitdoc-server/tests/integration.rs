@@ -188,7 +188,7 @@ mod pipeline_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let result = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions()).await.unwrap();
 
@@ -210,7 +210,7 @@ mod pipeline_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let r1 = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", None, None, &default_exclusions()).await.unwrap();
         let r2 = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", None, None, &default_exclusions()).await.unwrap();
@@ -223,7 +223,7 @@ mod pipeline_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let r1 = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions()).await.unwrap();
 
@@ -239,11 +239,34 @@ mod pipeline_tests {
     }
 
     #[tokio::test]
+    async fn nested_exclusion_patterns_are_skipped() {
+        let repo = create_test_repo();
+        let (_container, db) = get_test_db().await;
+        let search = test_search();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
+
+        // Create nested node_modules (like in a monorepo)
+        std::fs::create_dir_all(repo.path().join("packages/app/node_modules/pkg")).unwrap();
+        std::fs::write(repo.path().join("packages/app/node_modules/pkg/index.js"), "function nested() {}").unwrap();
+        // Also a root-level node_modules
+        std::fs::create_dir_all(repo.path().join("node_modules/pkg")).unwrap();
+        std::fs::write(repo.path().join("node_modules/pkg/index.js"), "function root() {}").unwrap();
+        run_git(repo.path(), &["add", "."]);
+        run_git(repo.path(), &["commit", "-m", "add nested node_modules"]);
+
+        let result = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", None, None, &default_exclusions()).await.unwrap();
+
+        // Should only scan the 4 original files (README.md, main.rs, app.ts, ignored.txt)
+        // Both root and nested node_modules should be excluded
+        assert_eq!(result.files_scanned, 4, "nested node_modules should be excluded");
+    }
+
+    #[tokio::test]
     async fn excluded_prefixes_are_skipped() {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         std::fs::create_dir_all(repo.path().join("node_modules/pkg")).unwrap();
         std::fs::write(repo.path().join("node_modules/pkg/index.js"), "function x() {}").unwrap();
@@ -272,7 +295,7 @@ mod search_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let result = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions()).await.unwrap();
 
@@ -294,7 +317,7 @@ mod search_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let r1 = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions()).await.unwrap();
 
@@ -345,7 +368,7 @@ mod real_repo_tests {
         let repo = clone_repo("https://github.com/tinyest-org/ArcRun");
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("arcrun", repo.path().to_str().unwrap(), "ArcRun").await.unwrap();
+        db.insert_repo("arcrun", repo.path().to_str().unwrap(), "ArcRun", None).await.unwrap();
 
         let sha = git_walker::resolve_commit(repo.path(), "HEAD").unwrap();
         assert_eq!(sha.len(), 40, "SHA should be 40 hex chars");
@@ -399,7 +422,7 @@ mod diff_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         // Index v1
         let r1 = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions()).await.unwrap();
@@ -518,7 +541,7 @@ mod embedding_tests {
         let (_container, db) = get_test_db().await;
         let search = test_search();
         let embedder = MockEmbedder::new(8);
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let result = pipeline::run_indexation(
             &db, &search, "test", repo.path(), "HEAD", Some("v1"), Some(Arc::new(embedder) as Arc<dyn EmbeddingProvider>), &default_exclusions(),
@@ -547,10 +570,10 @@ mod embedding_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let result = pipeline::run_indexation(
-            &db, &search, "test", repo.path(), "HEAD", Some("v1"), None,
+            &db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions(),
         ).await.unwrap();
 
         assert_eq!(result.embeddings_count, 0);
@@ -566,7 +589,7 @@ mod embedding_tests {
         let (_container, db) = get_test_db().await;
         let search = test_search();
         let embedder: Arc<dyn EmbeddingProvider> = Arc::new(MockEmbedder::new(8));
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let r1 = pipeline::run_indexation(
             &db, &search, "test", repo.path(), "HEAD", Some("v1"), Some(Arc::clone(&embedder)), &default_exclusions(),
@@ -603,7 +626,7 @@ mod gc_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         // Index v1
         let r1 = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions()).await.unwrap();
@@ -643,7 +666,7 @@ mod gc_tests {
         let repo = create_test_repo();
         let (_container, db) = get_test_db().await;
         let search = test_search();
-        db.insert_repo("test", repo.path().to_str().unwrap(), "Test").await.unwrap();
+        db.insert_repo("test", repo.path().to_str().unwrap(), "Test", None).await.unwrap();
 
         let r1 = pipeline::run_indexation(&db, &search, "test", repo.path(), "HEAD", Some("v1"), None, &default_exclusions()).await.unwrap();
 

@@ -18,7 +18,15 @@ impl IntoResponse for GitdocError {
             GitdocError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             GitdocError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             GitdocError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
-            GitdocError::Internal(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
+            GitdocError::Internal(err) => {
+                tracing::error!(error = %err, "internal server error");
+                let message = if cfg!(debug_assertions) {
+                    err.to_string()
+                } else {
+                    "internal server error".into()
+                };
+                (StatusCode::INTERNAL_SERVER_ERROR, message)
+            }
         };
         (status, Json(json!({ "error": message }))).into_response()
     }

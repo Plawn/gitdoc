@@ -98,8 +98,17 @@ impl Config {
             .or(file_config.log_format)
             .unwrap_or_else(|| "text".into());
 
-        let exclusion_patterns = file_config.exclusion_patterns
-            .unwrap_or_else(default_exclusion_patterns);
+        let exclusion_patterns = {
+            let mut patterns = default_exclusion_patterns();
+            if let Some(extra) = file_config.exclusion_patterns {
+                for p in extra {
+                    if !patterns.contains(&p) {
+                        patterns.push(p);
+                    }
+                }
+            }
+            patterns
+        };
 
         let embedding = Self::resolve_embedding(&file_config.embedding);
         let llm = Self::resolve_llm(&file_config.llm);

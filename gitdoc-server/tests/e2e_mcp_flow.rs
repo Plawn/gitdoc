@@ -147,16 +147,19 @@ async fn start_server(db: Arc<Database>, repos_dir: &Path) -> String {
             "vendor/".into(),
         ],
         embedding: None,
+        llm: None,
     });
 
     let state = Arc::new(AppState {
         db,
         search,
         embedder: None,
+        llm_client: None,
         config: cfg,
     });
 
     use gitdoc_server::api::snapshots;
+    use gitdoc_server::api::symbols;
     use gitdoc_server::api::search as search_api;
 
     let app = Router::new()
@@ -174,18 +177,18 @@ async fn start_server(db: Arc<Database>, repos_dir: &Path) -> String {
         .route("/snapshots/{snapshot_id}/overview", get(snapshots::get_overview))
         .route("/snapshots/{snapshot_id}/docs", get(snapshots::list_docs))
         .route("/snapshots/{snapshot_id}/docs/{*path}", get(snapshots::get_doc_content))
-        .route("/snapshots/{snapshot_id}/symbols", get(snapshots::list_symbols))
+        .route("/snapshots/{snapshot_id}/symbols", get(symbols::list_symbols))
         .route(
             "/snapshots/{snapshot_id}/symbols/{symbol_id}",
-            get(snapshots::get_snapshot_symbol),
+            get(symbols::get_snapshot_symbol),
         )
         .route(
             "/snapshots/{snapshot_id}/symbols/{symbol_id}/references",
-            get(snapshots::get_symbol_references),
+            get(symbols::get_symbol_references),
         )
         .route(
             "/snapshots/{snapshot_id}/symbols/{symbol_id}/implementations",
-            get(snapshots::get_symbol_implementations),
+            get(symbols::get_symbol_implementations),
         )
         .route("/snapshots/{from_id}/diff/{to_id}", get(snapshots::diff_symbols))
         .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
@@ -198,7 +201,7 @@ async fn start_server(db: Arc<Database>, repos_dir: &Path) -> String {
             "/snapshots/{snapshot_id}/search/semantic",
             get(search_api::search_semantic),
         )
-        .route("/symbols/{symbol_id}", get(snapshots::get_symbol))
+        .route("/symbols/{symbol_id}", get(symbols::get_symbol))
         .route("/admin/gc", post(search_api::gc))
         .with_state(state);
 

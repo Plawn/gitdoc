@@ -61,10 +61,10 @@
 - [x] Tool MCP: `diff_symbols` with params `repo_id, from_ref?, to_ref?, kind?, include_private?` — resolves refs via snapshot resolver
 - [x] Integration test: indexes v1, modifies code (changed signature + removed function + added function), indexes v2, verifies diff correctness
 
-## Phase 7 — Polish & robustesse ⬜
-- [ ] Error handling with actionable messages
-- [ ] TOML config (port, DB path, embedding provider, exclusion patterns)
-- [ ] Default exclusion patterns (`node_modules/`, `target/`, `.git/`, `vendor/`)
-- [ ] Structured tracing
-- [ ] Integration tests with fixtures
-- [ ] Garbage collection for orphan files and deleted snapshots
+## Phase 7 — Polish & robustesse ✅
+- [x] Error handling: Internal errors sanitized (generic message in release, detail in debug), tracing::error on 500s
+- [x] TOML config: `gitdoc.toml` with bind_addr, database_url, index_path, log_format, exclusion_patterns, embedding, llm
+- [x] Default exclusion patterns (`node_modules/`, `target/`, `.git/`, `vendor/`, `.next/`, `dist/`, `build/`, `__pycache__/`) — TOML patterns now merge with defaults instead of replacing them
+- [x] Structured tracing: `#[instrument]` on pipeline, info/warn/debug logging on indexation lifecycle
+- [x] Integration tests: 10+ tests covering pipeline, search, diff, embeddings, GC, and nested exclusion patterns
+- [x] Garbage collection: `gc_orphans()` cleans up files, docs, symbols, refs, embeddings; triggered on delete

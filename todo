@@ -1,1 +1,2 @@
-fournir un agent conversationnel sous forme de mcp pour aider un agent de code a faire son dev, l'agent helper possède son contexte et une cheatsheet du repo
+- fournir un agent conversationnel sous forme de mcp pour aider un agent de code a faire son dev, l'agent helper possède son contexte et une cheatsheet du repo
+- 2 modes granular and simple (many tools vs few tools and helper agent)

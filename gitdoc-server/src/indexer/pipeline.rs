@@ -32,6 +32,7 @@ struct PendingEmbedding {
     text: String,
 }
 
+#[tracing::instrument(skip(db, search, repo_path, label, embedder, exclusion_patterns), fields(repo_id, ref_str))]
 pub async fn run_indexation(
     db: &Arc<Database>,
     search: &SearchIndex,
@@ -83,6 +84,7 @@ pub async fn run_indexation(
     {
         Ok(f) => f,
         Err(e) => {
+            tracing::warn!(snapshot_id, error = %e, "indexation failed, snapshot marked as failed");
             db.fail_snapshot(snapshot_id, &e.to_string()).await?;
             return Err(e);
         }
@@ -95,13 +97,17 @@ pub async fn run_indexation(
     let mut pending_embeddings: Vec<PendingEmbedding> = Vec::new();
 
     for file_entry in &files {
-        if exclusion_patterns.iter().any(|p| file_entry.path.starts_with(p.as_str())) {
+        if exclusion_patterns.iter().any(|p| {
+            file_entry.path.starts_with(p.as_str())
+                || file_entry.path.contains(&format!("/{}", p))
+        }) {
             continue;
         }
 
         files_scanned += 1;
 
         let file_type = classify_file(&file_entry.path);
+        tracing::debug!(path = %file_entry.path, file_type, "classifying file");
 
         let file_id = match db.find_file_by_checksum(&file_entry.checksum).await? {
             Some(id) => id,
@@ -326,6 +332,8 @@ pub async fn run_indexation(
         "duration_ms": duration_ms,
     });
     db.finalize_snapshot(snapshot_id, &stats.to_string()).await?;
+
+    tracing::info!(snapshot_id, files_scanned, docs_count, symbols_count, refs_count, embeddings_count, duration_ms, "indexation complete");
 
     Ok(IndexResult {
         snapshot_id,
