@@ -1,0 +1,3 @@
+[workspace]
+members = ["gitdoc-server", "gitdoc-mcp"]
+resolver = "3"

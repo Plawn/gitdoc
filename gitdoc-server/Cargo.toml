@@ -1,0 +1,48 @@
+[package]
+name = "gitdoc-server"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "gitdoc_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gitdoc-server"
+path = "src/main.rs"
+
+[dependencies]
+# HTTP
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio = { version = "1", features = ["full"] }
+
+# Git
+gix = { version = "0.72", default-features = false, features = ["basic", "revision"] }
+
+# Tree-sitter
+tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.23"
+
+# Storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Serde
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Regex
+regex = "1"
+
+# Utils
+anyhow = "1"
+sha2 = "0.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+hex = "0.4"
+streaming-iterator = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
