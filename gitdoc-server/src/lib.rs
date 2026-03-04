@@ -7,6 +7,7 @@ pub mod indexer;
 pub mod search;
 pub mod embeddings;
 pub mod llm;
+pub mod util;
 
 use std::sync::Arc;
 

@@ -1,4 +1,9 @@
 pub mod repos;
 pub mod snapshots;
+pub mod symbols;
+pub mod public_api;
+pub mod module_tree;
+pub mod type_context;
+pub mod summaries;
 pub mod search;
 pub mod explain;

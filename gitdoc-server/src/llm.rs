@@ -17,7 +17,7 @@ pub async fn generate_crate_summary(
         .iter()
         .filter(|f| f.file_type != "other")
         .map(|f| {
-            let mod_path = crate::api::snapshots::path_to_module(&f.file_path);
+            let mod_path = crate::util::path_to_module(&f.file_path);
             format!("  {} ({} public items)", mod_path, f.public_symbol_count)
         })
         .collect();

@@ -1,7 +1,9 @@
 mod config;
 mod client;
+mod params;
 mod server;
 mod snapshot_resolver;
+mod types;
 
 use mcp_framework::{run, McpApp, AuthProvider};
 

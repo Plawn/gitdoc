@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(cfg),
     });
 
-    use gitdoc_server::api::snapshots;
+    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries};
     use gitdoc_server::api::search as search_api;
 
     let app = Router::new()
@@ -91,23 +91,23 @@ async fn main() -> anyhow::Result<()> {
         .route("/snapshots/{snapshot_id}/overview", get(snapshots::get_overview))
         .route("/snapshots/{snapshot_id}/docs", get(snapshots::list_docs))
         .route("/snapshots/{snapshot_id}/docs/{*path}", get(snapshots::get_doc_content))
-        .route("/snapshots/{snapshot_id}/symbols", get(snapshots::list_symbols))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}", get(snapshots::get_snapshot_symbol))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/references", get(snapshots::get_symbol_references))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/implementations", get(snapshots::get_symbol_implementations))
-        .route("/snapshots/{snapshot_id}/public_api", get(snapshots::get_public_api))
-        .route("/snapshots/{snapshot_id}/module_tree", get(snapshots::get_module_tree))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/type_context", get(snapshots::get_type_context))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/examples", get(snapshots::get_examples))
-        .route("/snapshots/{snapshot_id}/summarize", post(snapshots::summarize))
-        .route("/snapshots/{snapshot_id}/summary", get(snapshots::get_summary))
+        .route("/snapshots/{snapshot_id}/symbols", get(symbols::list_symbols))
+        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}", get(symbols::get_snapshot_symbol))
+        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/references", get(symbols::get_symbol_references))
+        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/implementations", get(symbols::get_symbol_implementations))
+        .route("/snapshots/{snapshot_id}/public_api", get(public_api::get_public_api))
+        .route("/snapshots/{snapshot_id}/module_tree", get(module_tree::get_module_tree))
+        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/type_context", get(type_context::get_type_context))
+        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/examples", get(type_context::get_examples))
+        .route("/snapshots/{snapshot_id}/summarize", post(summaries::summarize))
+        .route("/snapshots/{snapshot_id}/summary", get(summaries::get_summary))
         .route("/snapshots/{snapshot_id}/explain", get(gitdoc_server::api::explain::explain))
         .route("/snapshots/{from_id}/diff/{to_id}", get(snapshots::diff_symbols))
         .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
         .route("/snapshots/{snapshot_id}/search/docs", get(search_api::search_docs))
         .route("/snapshots/{snapshot_id}/search/symbols", get(search_api::search_symbols))
         .route("/snapshots/{snapshot_id}/search/semantic", get(search_api::search_semantic))
-        .route("/symbols/{symbol_id}", get(snapshots::get_symbol))
+        .route("/symbols/{symbol_id}", get(symbols::get_symbol))
         .route("/admin/gc", post(search_api::gc))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
