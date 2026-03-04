@@ -43,12 +43,39 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let llm_client: Option<Arc<llm_ai::OpenAiCompatibleClient>> = match &cfg.llm {
+        Some(llm_cfg) => {
+            match llm_ai::ClientProvider::from_config(&[llm_cfg.engine.clone()]) {
+                Ok(provider) => {
+                    let client = provider.get("gitdoc-llm");
+                    if client.is_some() {
+                        tracing::info!(
+                            endpoint = %llm_cfg.engine.endpoint,
+                            model = ?llm_cfg.engine.deployment,
+                            "LLM provider initialized"
+                        );
+                    }
+                    client
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to create LLM provider, continuing without LLM");
+                    None
+                }
+            }
+        }
+        None => {
+            tracing::info!("no LLM provider configured (set GITDOC_LLM_ENDPOINT)");
+            None
+        }
+    };
+
     let bind_addr = cfg.bind_addr;
 
     let state = Arc::new(AppState {
         db: Arc::new(database),
         search: Arc::new(search_index),
         embedder,
+        llm_client,
         config: Arc::new(cfg),
     });
 
@@ -68,6 +95,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/snapshots/{snapshot_id}/symbols/{symbol_id}", get(snapshots::get_snapshot_symbol))
         .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/references", get(snapshots::get_symbol_references))
         .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/implementations", get(snapshots::get_symbol_implementations))
+        .route("/snapshots/{snapshot_id}/public_api", get(snapshots::get_public_api))
+        .route("/snapshots/{snapshot_id}/module_tree", get(snapshots::get_module_tree))
+        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/type_context", get(snapshots::get_type_context))
+        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/examples", get(snapshots::get_examples))
+        .route("/snapshots/{snapshot_id}/summarize", post(snapshots::summarize))
+        .route("/snapshots/{snapshot_id}/summary", get(snapshots::get_summary))
+        .route("/snapshots/{snapshot_id}/explain", get(gitdoc_server::api::explain::explain))
         .route("/snapshots/{from_id}/diff/{to_id}", get(snapshots::diff_symbols))
         .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
         .route("/snapshots/{snapshot_id}/search/docs", get(search_api::search_docs))

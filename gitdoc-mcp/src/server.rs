@@ -176,6 +176,93 @@ struct SearchSymbolsParams {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct GetPublicApiParams {
+    /// The repo ID
+    repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+    /// Filter by module path (e.g. "runtime", "runtime::task"). Uses Rust module path syntax with "::" separators.
+    module_path: Option<String>,
+    /// Maximum number of symbols to return (default: 2000)
+    limit: Option<i64>,
+    /// Offset for pagination (default: 0)
+    offset: Option<i64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct GetModuleTreeParams {
+    /// The repo ID
+    repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+    /// Maximum depth of the tree to return (default: unlimited). Use 1-2 to get a top-level overview.
+    depth: Option<usize>,
+    /// If true, include public symbol signatures in each module node (default: false)
+    include_signatures: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct GetTypeContextParams {
+    /// The symbol ID of the type/trait/enum to get context for
+    symbol_id: i64,
+    /// The repo ID
+    repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct GetExamplesParams {
+    /// The symbol ID to extract examples from
+    symbol_id: i64,
+    /// The repo ID
+    repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct SummarizeParams {
+    /// The repo ID
+    repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+    /// Summary scope: "crate" for whole-crate summary, "module:<path>" (e.g. "module:runtime") for a module, or "type:<symbol_id>" (e.g. "type:42") for a specific type
+    scope: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct GetSummaryParams {
+    /// The repo ID
+    repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+    /// Summary scope: "crate", "module:<path>", or "type:<symbol_id>". Omit to list all available summaries.
+    scope: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ExplainParams {
+    /// The repo ID
+    repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+    /// Natural language question (e.g. "how to create a TCP server?", "what is the lifecycle of a task?")
+    query: String,
+    /// If true, use LLM to synthesize a final answer from the assembled context (requires GITDOC_LLM_ENDPOINT). Default: false.
+    synthesize: Option<bool>,
+    /// Maximum number of initial semantic search hits (default: 10)
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct SemanticSearchParams {
     /// The repo ID
     repo_id: String,
@@ -448,6 +535,118 @@ impl GitdocMcpServer {
         }
     }
 
+    #[tool(description = "Get the complete public API surface of a crate or module in a SINGLE call. Returns all public symbols (functions, structs, enums, traits, consts, etc.) grouped by module, with their signatures and doc comments. Impl block methods are MERGED onto their parent types. This is the most efficient way to understand a library's API — use this instead of calling list_symbols repeatedly. Filter by module_path (e.g. 'runtime', 'runtime::task') to focus on a specific module. Supports pagination via limit/offset for very large crates.")]
+    async fn get_public_api(
+        &self,
+        params: Parameters<GetPublicApiParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.get_public_api(snapshot_id, p.module_path.as_deref(), p.limit, p.offset).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Get the hierarchical module tree of a crate. Returns a tree of modules with: name, path (e.g. 'runtime::task'), doc comment, number of public items, and optionally the signatures of all public symbols in each module. This is the best way to understand the structure and organization of a Rust crate. Use depth=1 or depth=2 for a top-level overview, then drill into specific modules with get_public_api(module_path=...). Set include_signatures=true to also get the symbol signatures inline (useful for small modules).")]
+    async fn get_module_tree(
+        &self,
+        params: Parameters<GetModuleTreeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.get_module_tree(snapshot_id, p.depth, p.include_signatures).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Get EVERYTHING about a type in a SINGLE call: its definition (signature, doc comment, full body), methods, fields/variants, traits it implements, types that implement it (if it's a trait), functions that call/use it, and types it depends on. This replaces the need to call get_symbol + find_references + get_dependencies + get_implementations separately. Use this when you need to fully understand a struct, enum, trait, or class.")]
+    async fn get_type_context(
+        &self,
+        params: Parameters<GetTypeContextParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.get_type_context(snapshot_id, p.symbol_id).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Extract code examples from a symbol's doc comments. Parses fenced code blocks (```rust ... ```) from the doc comment and returns them as structured examples with language tag and code content. Great for understanding how to use a function, struct, or trait by its documentation examples.")]
+    async fn get_examples(
+        &self,
+        params: Parameters<GetExamplesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.get_examples(snapshot_id, p.symbol_id).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Generate an LLM summary for a crate, module, or type. This TRIGGERS generation (costs LLM tokens) — use get_summary to retrieve previously generated summaries. Scope values: 'crate' (whole crate overview), 'module:<path>' (e.g. 'module:runtime'), 'type:<symbol_id>' (e.g. 'type:42'). Requires an LLM provider configured on the server (GITDOC_LLM_ENDPOINT). Returns the generated summary text.")]
+    async fn summarize(
+        &self,
+        params: Parameters<SummarizeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.summarize(snapshot_id, &p.scope).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Retrieve a previously generated LLM summary. Use 'summarize' to generate summaries first. Scope values: 'crate', 'module:<path>', 'type:<symbol_id>'. Omit scope to list all available summaries for the snapshot.")]
+    async fn get_summary(
+        &self,
+        params: Parameters<GetSummaryParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.get_summary(snapshot_id, p.scope.as_deref()).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Ask a natural language question about a codebase and get an assembled answer with relevant symbols, docs, and relationships. Uses semantic search to find relevant content, then enriches each hit with type context (methods, traits, dependencies). Set synthesize=true to get an LLM-generated answer on top of the assembled context. This is the highest-level exploration tool — use it when you have a conceptual question like 'how does task scheduling work?' or 'what's the error handling strategy?'. Requires embedding provider; optionally requires LLM provider for synthesis.")]
+    async fn explain(
+        &self,
+        params: Parameters<ExplainParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.explain(snapshot_id, &p.query, p.synthesize, p.limit).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
     #[tool(description = "Semantic search by meaning across docs and code using vector embeddings. Use natural language queries like 'how is authentication handled?' or 'error retry logic' to find relevant content even without exact keyword matches. Scope: 'all' (default), 'docs' (only documentation), or 'symbols' (only code). Requires an embedding provider configured on the server (COHERE_KEY or OPENAI_API_KEY). Returns error if no provider is available — fall back to search_docs or search_symbols instead.")]
     async fn semantic_search(
         &self,
@@ -514,13 +713,21 @@ IMPORTANT: Do NOT clone repositories yourself. The server handles all git clonin
 | `index_repo` | Create a snapshot (REQUIRED before querying) | `repo_id`, optional: `commit`, `label`, `fetch` |
 | `fetch_repo` | Update a URL-cloned repo (does NOT re-index) | `repo_id` |
 
-### Browsing (start here to explore a repo)
+### High-Level Views (START HERE for complex libraries — 2-3 calls to understand a whole crate)
 | Tool | When to use | Returns |
 |------|-------------|---------|
-| `get_repo_overview` | **Best starting point.** Understand repo structure | README content, doc file listing, top-level public symbols |
+| `get_module_tree` | **Best starting point for Rust crates.** See the full module hierarchy | Tree of modules with doc comments and item counts |
+| `get_public_api` | **Get a crate's complete API cheat sheet** in one call | All public signatures grouped by module, with impl methods merged onto types |
+| `get_type_context` | **Understand a type completely** in one call | Definition + methods + traits + implementors + callers + dependencies |
+| `get_examples` | See how a symbol is used | Code examples extracted from doc comments |
+
+### Browsing (detailed exploration)
+| Tool | When to use | Returns |
+|------|-------------|---------|
+| `get_repo_overview` | Read README and see structure | README content, doc file listing, top-level public symbols |
 | `list_docs` | Browse documentation files | File paths and titles |
 | `read_doc` | Read a specific doc file | Full text content with title |
-| `list_symbols` | Browse code symbols | name, kind, visibility, signature, file_path, line numbers, doc_comment |
+| `list_symbols` | Browse code symbols (use get_public_api instead for API overview) | name, kind, visibility, signature, file_path, line numbers, doc_comment |
 | `get_symbol` | Read a symbol's implementation | Full source body + child symbols (methods, fields) |
 
 ### Code Navigation (trace the dependency graph)
@@ -533,9 +740,16 @@ IMPORTANT: Do NOT clone repositories yourself. The server handles all git clonin
 ### Search (find things by name or meaning)
 | Tool | When to use | Returns |
 |------|-------------|---------|
+| `explain` | **Ask a question in natural language** — assembles context from semantic search + type context | Relevant symbols with methods/traits, docs, optional LLM synthesis |
 | `search_docs` | Find docs by keyword | Matching docs with highlighted snippets |
 | `search_symbols` | Find symbols by keyword (name, signature, doc comment) | Matching symbols with relevance score |
 | `semantic_search` | Find by meaning ("how is auth handled?") | Docs and/or symbols ranked by semantic similarity |
+
+### LLM Summaries (requires GITDOC_LLM_ENDPOINT configured)
+| Tool | When to use | Returns |
+|------|-------------|---------|
+| `summarize` | **Generate** an LLM summary (costs tokens) | Generated summary for crate/module/type |
+| `get_summary` | **Retrieve** a previously generated summary | Cached summary or list of available summaries |
 
 ### Maintenance
 | Tool | When to use |
@@ -544,6 +758,13 @@ IMPORTANT: Do NOT clone repositories yourself. The server handles all git clonin
 
 ## Recommended Exploration Workflow
 
+### For understanding a complex library (Rust crate with many modules):
+1. `get_module_tree(repo_id: "X", depth: 2)` → see the module hierarchy
+2. `get_public_api(repo_id: "X", module_path: "runtime")` → get all public signatures in a module
+3. `get_type_context(symbol_id: 123, repo_id: "X")` → deep-dive into a specific type
+4. `get_examples(symbol_id: 123, repo_id: "X")` → see usage examples from doc comments
+
+### For general exploration:
 1. `list_repos` → find available repos
 2. `get_repo_overview(repo_id: "X")` → read README, see doc tree and top symbols
 3. `search_symbols(repo_id: "X", query: "what you're looking for")` → find relevant symbols

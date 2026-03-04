@@ -47,6 +47,9 @@ reqwest = { version = "0.12", features = ["json"] }
 # Config
 toml = "0.8"
 
+# LLM
+llm-ai = { path = "../llm-ai" }
+
 # Utils
 anyhow = "1"
 sha2 = "0.10"

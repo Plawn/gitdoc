@@ -713,6 +713,166 @@ impl Database {
         })
     }
 
+    // --- High-level aggregated views ---
+
+    /// Get all public symbols for a snapshot, optionally filtered by module_path prefix.
+    /// Returns symbols with their file_path for grouping. Impl blocks are included so the
+    /// caller can merge their children onto the parent type.
+    pub async fn get_public_api_symbols(
+        &self,
+        snapshot_id: i64,
+        module_path: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<PublicApiSymbol>> {
+        let mut qb: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.visibility, s.file_path,
+                    s.line_start, s.line_end, s.signature, s.doc_comment, s.parent_id
+             FROM symbols s
+             JOIN snapshot_files sf ON sf.file_id = s.file_id
+             WHERE sf.snapshot_id = ",
+        );
+        qb.push_bind(snapshot_id);
+        qb.push(" AND s.visibility != 'private'");
+
+        if let Some(mp) = module_path {
+            // Match file_path starting with the module path (converted to directory path)
+            // e.g. module_path="runtime" matches "src/runtime/mod.rs", "src/runtime/builder.rs"
+            let pattern = format!("%{}%", mp.replace("::", "/"));
+            qb.push(" AND s.file_path LIKE ");
+            qb.push_bind(pattern);
+        }
+
+        qb.push(" ORDER BY s.file_path, s.line_start");
+        qb.push(" LIMIT ");
+        qb.push_bind(limit);
+        qb.push(" OFFSET ");
+        qb.push_bind(offset);
+
+        let rows = qb
+            .build_query_as::<PublicApiSymbol>()
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Get all file paths in a snapshot (for building module tree).
+    pub async fn get_snapshot_file_paths(
+        &self,
+        snapshot_id: i64,
+    ) -> Result<Vec<SnapshotFileInfo>> {
+        let rows = sqlx::query_as::<_, SnapshotFileInfo>(
+            "SELECT sf.file_path, sf.file_type,
+                    (SELECT COUNT(*) FROM symbols s WHERE s.file_id = sf.file_id AND s.visibility != 'private') AS public_symbol_count
+             FROM snapshot_files sf
+             WHERE sf.snapshot_id = $1
+             ORDER BY sf.file_path",
+        )
+        .bind(snapshot_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get module symbols for a snapshot (kind='module') with their doc comments.
+    pub async fn get_module_symbols(
+        &self,
+        snapshot_id: i64,
+    ) -> Result<Vec<ModuleSymbol>> {
+        let rows = sqlx::query_as::<_, ModuleSymbol>(
+            "SELECT s.id, s.name, s.qualified_name, s.file_path, s.doc_comment, s.parent_id
+             FROM symbols s
+             JOIN snapshot_files sf ON sf.file_id = s.file_id
+             WHERE sf.snapshot_id = $1 AND s.kind = 'module'
+             ORDER BY s.file_path, s.line_start",
+        )
+        .bind(snapshot_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get public symbols grouped by file for a snapshot, optionally filtered by module_path.
+    /// Used for module_tree with include_signatures=true.
+    pub async fn get_public_signatures_by_file(
+        &self,
+        snapshot_id: i64,
+        file_paths: &[String],
+    ) -> Result<Vec<SymbolRow>> {
+        if file_paths.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut qb: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.visibility, s.file_path,
+                    s.line_start, s.line_end, s.signature, s.doc_comment, s.parent_id
+             FROM symbols s
+             JOIN snapshot_files sf ON sf.file_id = s.file_id
+             WHERE sf.snapshot_id = ",
+        );
+        qb.push_bind(snapshot_id);
+        qb.push(" AND s.visibility != 'private' AND s.file_path = ANY(");
+        qb.push_bind(file_paths);
+        qb.push(") ORDER BY s.file_path, s.line_start");
+
+        let rows = qb
+            .build_query_as::<SymbolRow>()
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    // --- Summaries ---
+
+    pub async fn upsert_summary(
+        &self,
+        snapshot_id: i64,
+        scope: &str,
+        content: &str,
+        model: &str,
+    ) -> Result<i64> {
+        let (id,): (i64,) = sqlx::query_as(
+            "INSERT INTO summaries (snapshot_id, scope, content, model)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (snapshot_id, scope)
+             DO UPDATE SET content = EXCLUDED.content, model = EXCLUDED.model, created_at = NOW()
+             RETURNING id",
+        )
+        .bind(snapshot_id)
+        .bind(scope)
+        .bind(content)
+        .bind(model)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn get_summary(
+        &self,
+        snapshot_id: i64,
+        scope: &str,
+    ) -> Result<Option<SummaryRow>> {
+        let row = sqlx::query_as::<_, SummaryRow>(
+            "SELECT id, snapshot_id, scope, content, model, created_at
+             FROM summaries WHERE snapshot_id = $1 AND scope = $2",
+        )
+        .bind(snapshot_id)
+        .bind(scope)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn list_summaries(&self, snapshot_id: i64) -> Result<Vec<SummaryRow>> {
+        let rows = sqlx::query_as::<_, SummaryRow>(
+            "SELECT id, snapshot_id, scope, content, model, created_at
+             FROM summaries WHERE snapshot_id = $1 ORDER BY scope",
+        )
+        .bind(snapshot_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get_snapshot_files(&self, snapshot_id: i64) -> Result<Vec<SnapshotFileRow>> {
         let rows = sqlx::query_as::<_, SnapshotFileRow>(
             "SELECT file_path, file_id, file_type FROM snapshot_files WHERE snapshot_id = $1",
@@ -927,4 +1087,48 @@ pub struct EmbeddingSearchResult {
     pub source_id: i64,
     pub text: String,
     pub score: f64,
+}
+
+// --- High-level view types ---
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct SummaryRow {
+    pub id: i64,
+    pub snapshot_id: i64,
+    pub scope: String,
+    pub content: String,
+    pub model: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct PublicApiSymbol {
+    pub id: i64,
+    pub name: String,
+    pub qualified_name: String,
+    pub kind: String,
+    pub visibility: String,
+    pub file_path: String,
+    pub line_start: i64,
+    pub line_end: i64,
+    pub signature: String,
+    pub doc_comment: Option<String>,
+    pub parent_id: Option<i64>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct SnapshotFileInfo {
+    pub file_path: String,
+    pub file_type: String,
+    pub public_symbol_count: i64,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ModuleSymbol {
+    pub id: i64,
+    pub name: String,
+    pub qualified_name: String,
+    pub file_path: String,
+    pub doc_comment: Option<String>,
+    pub parent_id: Option<i64>,
 }

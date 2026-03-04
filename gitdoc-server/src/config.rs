@@ -7,6 +7,10 @@ pub struct EmbeddingConfig {
     pub api_key: String,
 }
 
+pub struct LlmConfig {
+    pub engine: llm_ai::EngineConfig,
+}
+
 pub struct Config {
     pub bind_addr: SocketAddr,
     pub database_url: String,
@@ -15,6 +19,7 @@ pub struct Config {
     pub log_format: String,
     pub exclusion_patterns: Vec<String>,
     pub embedding: Option<EmbeddingConfig>,
+    pub llm: Option<LlmConfig>,
 }
 
 #[derive(Deserialize, Default)]
@@ -26,12 +31,25 @@ struct FileConfig {
     exclusion_patterns: Option<Vec<String>>,
     repos_dir: Option<String>,
     embedding: Option<FileEmbeddingConfig>,
+    llm: Option<FileLlmConfig>,
 }
 
 #[derive(Deserialize)]
 struct FileEmbeddingConfig {
     provider: Option<String>,
     api_key: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct FileLlmConfig {
+    /// Engine kind: "azure", "azure_inference", "ollama"
+    kind: Option<String>,
+    /// API endpoint URL
+    endpoint: Option<String>,
+    /// API key
+    key: Option<String>,
+    /// Model/deployment name
+    model: Option<String>,
 }
 
 fn default_exclusion_patterns() -> Vec<String> {
@@ -84,6 +102,7 @@ impl Config {
             .unwrap_or_else(default_exclusion_patterns);
 
         let embedding = Self::resolve_embedding(&file_config.embedding);
+        let llm = Self::resolve_llm(&file_config.llm);
 
         Self {
             bind_addr,
@@ -93,6 +112,7 @@ impl Config {
             log_format,
             exclusion_patterns,
             embedding,
+            llm,
         }
     }
 
@@ -106,6 +126,41 @@ impl Config {
             }),
             Err(_) => FileConfig::default(),
         }
+    }
+
+    fn resolve_llm(file_llm: &Option<FileLlmConfig>) -> Option<LlmConfig> {
+        // Env vars: GITDOC_LLM_ENDPOINT, GITDOC_LLM_KEY, GITDOC_LLM_MODEL, GITDOC_LLM_KIND
+        let endpoint = std::env::var("GITDOC_LLM_ENDPOINT").ok()
+            .or_else(|| file_llm.as_ref().and_then(|f| f.endpoint.clone()));
+        let key = std::env::var("GITDOC_LLM_KEY").ok()
+            .or_else(|| file_llm.as_ref().and_then(|f| f.key.clone()));
+        let model = std::env::var("GITDOC_LLM_MODEL").ok()
+            .or_else(|| file_llm.as_ref().and_then(|f| f.model.clone()));
+        let kind_str = std::env::var("GITDOC_LLM_KIND").ok()
+            .or_else(|| file_llm.as_ref().and_then(|f| f.kind.clone()))
+            .unwrap_or_else(|| "azure".into());
+
+        let endpoint = endpoint?;
+
+        let kind = match kind_str.as_str() {
+            "azure_inference" => llm_ai::EngineKind::AzureInference,
+            "ollama" => llm_ai::EngineKind::Ollama,
+            _ => llm_ai::EngineKind::Azure,
+        };
+
+        Some(LlmConfig {
+            engine: llm_ai::EngineConfig {
+                name: "gitdoc-llm".into(),
+                kind,
+                endpoint,
+                key,
+                deployment: model,
+                detect: None,
+                supports_temperature: true,
+                thinking: None,
+                reasoning_effort: None,
+            },
+        })
     }
 
     fn resolve_embedding(file_embedding: &Option<FileEmbeddingConfig>) -> Option<EmbeddingConfig> {

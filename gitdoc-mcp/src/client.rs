@@ -196,6 +196,63 @@ pub struct DiffResponse {
     pub summary: DiffSummary,
 }
 
+// --- High-level view response types ---
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PublicApiResponse {
+    pub snapshot_id: i64,
+    pub module_path: Option<String>,
+    pub modules: serde_json::Value,
+    pub total_items: usize,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModuleTreeResponse {
+    pub snapshot_id: i64,
+    pub tree: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TypeContextResponse {
+    pub symbol: SymbolDetail,
+    pub methods: Vec<SymbolRow>,
+    pub fields: Vec<SymbolRow>,
+    pub traits_implemented: Vec<RefWithSymbol>,
+    pub implementors: Vec<RefWithSymbol>,
+    pub used_by: serde_json::Value,
+    pub depends_on: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CodeExample {
+    pub language: Option<String>,
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ExamplesResponse {
+    pub symbol_id: i64,
+    pub symbol_name: String,
+    pub examples: Vec<CodeExample>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SummaryRow {
+    pub id: i64,
+    pub snapshot_id: i64,
+    pub scope: String,
+    pub content: String,
+    pub model: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SummarizeResponse {
+    pub snapshot_id: i64,
+    pub scope: String,
+    pub content: String,
+}
+
 pub struct GitdocClient {
     http: reqwest::Client,
     base_url: String,
@@ -524,6 +581,150 @@ impl GitdocClient {
         if !params.is_empty() {
             url.push('?');
             url.push_str(&params.join("&"));
+        }
+        let resp = self.http.get(&url).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    // --- High-level aggregated views ---
+
+    pub async fn get_public_api(
+        &self,
+        snapshot_id: i64,
+        module_path: Option<&str>,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<PublicApiResponse> {
+        let mut url = format!("{}/snapshots/{}/public_api", self.base_url, snapshot_id);
+        let mut params = Vec::new();
+        if let Some(mp) = module_path {
+            params.push(format!("module_path={}", mp));
+        }
+        if let Some(l) = limit {
+            params.push(format!("limit={}", l));
+        }
+        if let Some(o) = offset {
+            params.push(format!("offset={}", o));
+        }
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+        let resp = self.http.get(&url).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_module_tree(
+        &self,
+        snapshot_id: i64,
+        depth: Option<usize>,
+        include_signatures: Option<bool>,
+    ) -> Result<ModuleTreeResponse> {
+        let mut url = format!("{}/snapshots/{}/module_tree", self.base_url, snapshot_id);
+        let mut params = Vec::new();
+        if let Some(d) = depth {
+            params.push(format!("depth={}", d));
+        }
+        if let Some(is) = include_signatures {
+            params.push(format!("include_signatures={}", is));
+        }
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+        let resp = self.http.get(&url).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_type_context(
+        &self,
+        snapshot_id: i64,
+        symbol_id: i64,
+    ) -> Result<TypeContextResponse> {
+        let resp = self
+            .http
+            .get(format!(
+                "{}/snapshots/{}/symbols/{}/type_context",
+                self.base_url, snapshot_id, symbol_id
+            ))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_examples(
+        &self,
+        snapshot_id: i64,
+        symbol_id: i64,
+    ) -> Result<ExamplesResponse> {
+        let resp = self
+            .http
+            .get(format!(
+                "{}/snapshots/{}/symbols/{}/examples",
+                self.base_url, snapshot_id, symbol_id
+            ))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn summarize(
+        &self,
+        snapshot_id: i64,
+        scope: &str,
+    ) -> Result<SummarizeResponse> {
+        let resp = self
+            .http
+            .post(format!(
+                "{}/snapshots/{}/summarize?scope={}",
+                self.base_url, snapshot_id, scope
+            ))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn explain(
+        &self,
+        snapshot_id: i64,
+        query: &str,
+        synthesize: Option<bool>,
+        limit: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        let mut params = vec![("q", query.to_string())];
+        if let Some(s) = synthesize {
+            params.push(("synthesize", s.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        let resp = self
+            .http
+            .get(format!(
+                "{}/snapshots/{}/explain",
+                self.base_url, snapshot_id
+            ))
+            .query(&params)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_summary(
+        &self,
+        snapshot_id: i64,
+        scope: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut url = format!("{}/snapshots/{}/summary", self.base_url, snapshot_id);
+        if let Some(s) = scope {
+            url.push_str(&format!("?scope={}", s));
         }
         let resp = self.http.get(&url).send().await?;
         let resp = check_response(resp).await?;

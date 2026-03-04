@@ -6,6 +6,7 @@ pub mod api;
 pub mod indexer;
 pub mod search;
 pub mod embeddings;
+pub mod llm;
 
 use std::sync::Arc;
 
@@ -13,5 +14,6 @@ pub struct AppState {
     pub db: Arc<db::Database>,
     pub search: Arc<search::SearchIndex>,
     pub embedder: Option<Arc<dyn embeddings::EmbeddingProvider>>,
+    pub llm_client: Option<Arc<llm_ai::OpenAiCompatibleClient>>,
     pub config: Arc<config::Config>,
 }
