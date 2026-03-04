@@ -23,19 +23,17 @@ pub struct GitdocMcpServer {
 
 #[derive(Deserialize, JsonSchema)]
 struct RegisterRepoParams {
-    /// A unique identifier for the repository (e.g. "my-project")
+    /// A unique identifier for the repository (e.g. "my-project", "tokio", "react")
     id: String,
-    /// Git clone URL (e.g. "https://github.com/user/repo.git"). Use this for remote repos — the server will clone and manage the directory. Provide either 'url' or 'path', not both.
-    url: Option<String>,
-    /// Absolute path to an EXISTING git repository already on disk. Use this for local repos. Provide either 'url' or 'path', not both.
-    path: Option<String>,
+    /// Git clone URL (e.g. "https://github.com/user/repo.git"). The server clones and manages the directory.
+    url: String,
     /// Human-readable name for the repository (e.g. "My Project")
     name: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct FetchRepoParams {
-    /// The repo ID to fetch latest changes for (must be a URL-cloned repo)
+    /// The repo ID to fetch latest changes for
     repo_id: String,
 }
 
@@ -47,7 +45,7 @@ struct IndexRepoParams {
     commit: Option<String>,
     /// Optional human-readable label for the snapshot (e.g. "v1.0", "before-refactor"). Used later to reference this snapshot via the 'ref' parameter.
     label: Option<String>,
-    /// If true and the repo was registered with a URL, fetch latest changes from the remote before indexing. Has no effect on local-path repos. Default: false.
+    /// If true, fetch latest changes from the remote before indexing. Default: false.
     fetch: Option<bool>,
 }
 
@@ -148,15 +146,6 @@ struct DiffSymbolsParams {
 }
 
 #[derive(Deserialize, JsonSchema)]
-struct DeleteSnapshotParams {
-    /// The repo ID
-    repo_id: String,
-    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
-    #[serde(rename = "ref")]
-    reference: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
 struct SearchDocsParams {
     /// The repo ID
     repo_id: String,
@@ -235,19 +224,19 @@ impl GitdocMcpServer {
         }
     }
 
-    #[tool(description = "Register a git repository so it can be indexed. Provide exactly one of: 'url' (for remote repos — the server clones it) or 'path' (absolute filesystem path to a repo already on disk). IMPORTANT: After registering, you MUST call index_repo to create a snapshot before any query tool will work. Example: register_repo(id: 'myapp', name: 'My App', path: '/home/user/myapp') then index_repo(repo_id: 'myapp').")]
+    #[tool(description = "Register a git repository by its clone URL. The server clones and manages the repository. IMPORTANT: After registering, you MUST call index_repo to create a snapshot before any query tool will work. Example: register_repo(id: 'tokio', name: 'Tokio', url: 'https://github.com/tokio-rs/tokio.git') then index_repo(repo_id: 'tokio').")]
     async fn register_repo(
         &self,
         params: Parameters<RegisterRepoParams>,
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
-        match self.client.create_repo(&p.id, &p.name, p.url.as_deref(), p.path.as_deref()).await {
+        match self.client.create_repo(&p.id, &p.name, &p.url).await {
             Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
 
-    #[tool(description = "Pull the latest changes from the remote for a URL-cloned repository (runs git fetch + reset to origin/HEAD). Only works for repos registered with a 'url', not 'path'. This updates the local clone but does NOT re-index — call index_repo afterwards to create a new snapshot with the updated code. Alternatively, use index_repo with fetch=true to do both in one step.")]
+    #[tool(description = "Pull the latest changes from the remote (runs git fetch + reset to origin/HEAD). This updates the server's clone but does NOT re-index — call index_repo afterwards to create a new snapshot with the updated code. Alternatively, use index_repo with fetch=true to do both in one step.")]
     async fn fetch_repo(
         &self,
         params: Parameters<FetchRepoParams>,
@@ -259,7 +248,7 @@ impl GitdocMcpServer {
         }
     }
 
-    #[tool(description = "Index a repository at a given commit to create a snapshot. A snapshot captures all docs and code symbols at that point in time. IMPORTANT: You MUST call this at least once after register_repo before any query tool will work. If the repo was registered with a URL, set fetch=true to pull the latest changes before indexing. Use 'label' to give the snapshot a human-readable name (e.g. 'v1.0', 'main') for easy reference later via the 'ref' parameter. Returns the snapshot_id, commit SHA, and stats (file/doc/symbol/embedding counts). If the commit was already indexed, returns the existing snapshot (deduplication).")]
+    #[tool(description = "Index a repository at a given commit to create a snapshot. A snapshot captures all docs and code symbols at that point in time. IMPORTANT: You MUST call this at least once after register_repo before any query tool will work. Set fetch=true to pull the latest remote changes before indexing. Use 'label' to give the snapshot a human-readable name (e.g. 'v1.0', 'main') for easy reference later via the 'ref' parameter. Returns the snapshot_id, commit SHA, and stats (file/doc/symbol/embedding counts). If the commit was already indexed, returns the existing snapshot (deduplication).")]
     async fn index_repo(
         &self,
         params: Parameters<IndexRepoParams>,
@@ -427,30 +416,6 @@ impl GitdocMcpServer {
         }
     }
 
-    #[tool(description = "Delete a snapshot and garbage-collect its orphaned data (files, docs, symbols, refs, embeddings). Resolves the snapshot via repo_id and optional ref (label, SHA prefix, or latest). This is irreversible.")]
-    async fn delete_snapshot(
-        &self,
-        params: Parameters<DeleteSnapshotParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
-            Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
-        };
-        match self.client.delete_snapshot(snapshot_id).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
-            Err(e) => err_result(format!("error: {e}")),
-        }
-    }
-
-    #[tool(description = "Manually run garbage collection to clean up orphaned data (files, docs, symbols, refs, embeddings) that are no longer referenced by any snapshot. Usually not needed — delete_snapshot already runs GC automatically.")]
-    async fn gc(&self) -> Result<CallToolResult, McpError> {
-        match self.client.gc().await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
-            Err(e) => err_result(format!("error: {e}")),
-        }
-    }
-
     #[tool(description = "Full-text keyword search across documentation files in a snapshot. Returns matching documents with their file path, title, and highlighted text snippets containing the matches. Best for finding specific terms or phrases in docs.")]
     async fn search_docs(
         &self,
@@ -520,19 +485,16 @@ Supported languages: Rust (.rs), TypeScript (.ts/.tsx), JavaScript (.js/.jsx), M
 You MUST follow these steps for any new repository:
 
 1. `list_repos` → check if the repo is already registered
-2. If not registered: `register_repo` with `path` (local repo) or `url` (remote — server clones it)
+2. If not registered: `register_repo` with the git clone URL — the server clones and manages the repo
 3. `index_repo` → creates a snapshot. **Nothing works without at least one snapshot.**
 4. Now you can query: `get_repo_overview`, `list_symbols`, `search_symbols`, etc.
 
-Example — register and index a local repo:
-  register_repo(id: "myapp", name: "My App", path: "/home/user/myapp")
-  index_repo(repo_id: "myapp")
-  get_repo_overview(repo_id: "myapp")
-
-Example — register a remote repo:
+Example — register and index a repo:
   register_repo(id: "tokio", name: "Tokio", url: "https://github.com/tokio-rs/tokio.git")
-  index_repo(repo_id: "tokio", fetch: true, label: "latest")
+  index_repo(repo_id: "tokio", label: "latest")
   get_repo_overview(repo_id: "tokio", ref: "latest")
+
+IMPORTANT: Do NOT clone repositories yourself. The server handles all git cloning internally.
 
 ## Core Concepts
 
@@ -548,7 +510,7 @@ Example — register a remote repo:
 |------|-------------|------------|
 | `ping` | Connection check | — |
 | `list_repos` | See what's registered | — |
-| `register_repo` | Add a new repo | `id`, `name`, and ONE of `url` or `path` |
+| `register_repo` | Add a new repo (server clones it) | `id`, `name`, `url` |
 | `index_repo` | Create a snapshot (REQUIRED before querying) | `repo_id`, optional: `commit`, `label`, `fetch` |
 | `fetch_repo` | Update a URL-cloned repo (does NOT re-index) | `repo_id` |
 
@@ -579,8 +541,6 @@ Example — register a remote repo:
 | Tool | When to use |
 |------|-------------|
 | `diff_symbols` | Compare two snapshots — see added/removed/modified symbols |
-| `delete_snapshot` | Remove a snapshot (irreversible) |
-| `gc` | Manually clean up orphaned data |
 
 ## Recommended Exploration Workflow
 
@@ -593,10 +553,10 @@ Example — register a remote repo:
 
 ## Common Pitfalls
 
+- **Do NOT clone repos yourself**: The server handles all git cloning. Just pass the URL to `register_repo`.
 - **"No snapshot found"**: You forgot to call `index_repo` first. Every repo must be indexed before querying.
 - **"error resolving snapshot"**: The `ref` value doesn't match any label or commit SHA. Use `list_repos` to see available snapshots with their labels and commits.
 - **semantic_search returns 503**: No embedding provider configured on the server. Use `search_docs` or `search_symbols` instead.
-- **fetch_repo does nothing for local repos**: `fetch_repo` only works for URL-cloned repos. Local-path repos read directly from disk; just call `index_repo` again to capture new changes.
 - **symbol_id is a number**: Don't pass a string. It's an integer returned by list/search tools.
 
 ## Symbol Kinds

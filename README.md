@@ -126,10 +126,12 @@ If neither embedding key is set, semantic search returns `503 Service Unavailabl
 ### Repos
 
 ```
-POST /repos                         Create a repo  { id, path, name }
+POST /repos                         Create a repo  { id, name, url }
 GET  /repos                         List all repos
 GET  /repos/:repo_id                Get repo with its snapshots
-POST /repos/:repo_id/index          Trigger indexing  { commit?, label? }
+POST /repos/:repo_id/index          Trigger indexing  { commit?, label?, fetch? }
+POST /repos/:repo_id/fetch          Pull latest remote changes
+DELETE /repos/:repo_id              Delete repo and clean up
 ```
 
 ### Snapshot Navigation

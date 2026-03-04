@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 // --- Response types ---
@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RepoRow {
     pub id: String,
-    pub path: String,
     pub name: String,
     pub url: Option<String>,
     pub created_at: String,
@@ -32,8 +31,12 @@ pub struct RepoDetail {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct IndexResult {
     pub snapshot_id: i64,
-    pub commit_sha: String,
-    pub stats: serde_json::Value,
+    pub files_scanned: i64,
+    pub docs_count: i64,
+    pub symbols_count: i64,
+    pub refs_count: usize,
+    pub embeddings_count: usize,
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -198,6 +201,22 @@ pub struct GitdocClient {
     base_url: String,
 }
 
+/// Extract a readable error message from a non-2xx HTTP response.
+async fn check_response(resp: reqwest::Response) -> Result<reqwest::Response> {
+    if resp.status().is_success() {
+        return Ok(resp);
+    }
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    // Server returns {"error": "message"} — try to extract it
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+        if let Some(msg) = json.get("error").and_then(|v| v.as_str()) {
+            return Err(anyhow!("HTTP {}: {}", status.as_u16(), msg));
+        }
+    }
+    Err(anyhow!("HTTP {}: {}", status.as_u16(), body))
+}
+
 impl GitdocClient {
     pub fn new(server_url: &str) -> Self {
         Self {
@@ -211,10 +230,9 @@ impl GitdocClient {
             .http
             .get(format!("{}/health", self.base_url))
             .send()
-            .await?
-            .text()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.text().await?)
     }
 
     pub async fn list_repos(&self) -> Result<Vec<RepoRow>> {
@@ -222,10 +240,9 @@ impl GitdocClient {
             .http
             .get(format!("{}/repos", self.base_url))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn get_repo(&self, id: &str) -> Result<RepoDetail> {
@@ -233,35 +250,26 @@ impl GitdocClient {
             .http
             .get(format!("{}/repos/{}", self.base_url, id))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn create_repo(
         &self,
         id: &str,
         name: &str,
-        url: Option<&str>,
-        path: Option<&str>,
+        url: &str,
     ) -> Result<serde_json::Value> {
-        let mut body = serde_json::json!({ "id": id, "name": name });
-        if let Some(u) = url {
-            body["url"] = serde_json::Value::String(u.to_string());
-        }
-        if let Some(p) = path {
-            body["path"] = serde_json::Value::String(p.to_string());
-        }
+        let body = serde_json::json!({ "id": id, "name": name, "url": url });
         let resp = self
             .http
             .post(format!("{}/repos", self.base_url))
             .json(&body)
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn fetch_repo(&self, repo_id: &str) -> Result<serde_json::Value> {
@@ -269,10 +277,9 @@ impl GitdocClient {
             .http
             .post(format!("{}/repos/{}/fetch", self.base_url, repo_id))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn index_repo(
@@ -291,10 +298,9 @@ impl GitdocClient {
             .post(format!("{}/repos/{}/index", self.base_url, repo_id))
             .json(&body)
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn get_overview(&self, snapshot_id: i64) -> Result<OverviewResponse> {
@@ -302,10 +308,9 @@ impl GitdocClient {
             .http
             .get(format!("{}/snapshots/{}/overview", self.base_url, snapshot_id))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn list_docs(&self, snapshot_id: i64) -> Result<Vec<DocRow>> {
@@ -313,10 +318,9 @@ impl GitdocClient {
             .http
             .get(format!("{}/snapshots/{}/docs", self.base_url, snapshot_id))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn read_doc(&self, snapshot_id: i64, path: &str) -> Result<DocContent> {
@@ -327,10 +331,9 @@ impl GitdocClient {
                 self.base_url, snapshot_id, path
             ))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn list_symbols(
@@ -359,8 +362,9 @@ impl GitdocClient {
             url.push('?');
             url.push_str(&params.join("&"));
         }
-        let resp = self.http.get(&url).send().await?.json().await?;
-        Ok(resp)
+        let resp = self.http.get(&url).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn get_symbol(&self, symbol_id: i64) -> Result<SymbolDetailResponse> {
@@ -368,10 +372,9 @@ impl GitdocClient {
             .http
             .get(format!("{}/symbols/{}", self.base_url, symbol_id))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn get_references(
@@ -400,8 +403,9 @@ impl GitdocClient {
             url.push('?');
             url.push_str(&params.join("&"));
         }
-        let resp = self.http.get(&url).send().await?.json().await?;
-        Ok(resp)
+        let resp = self.http.get(&url).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn get_implementations(
@@ -416,10 +420,9 @@ impl GitdocClient {
                 self.base_url, snapshot_id, symbol_id
             ))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn search_docs(
@@ -440,10 +443,9 @@ impl GitdocClient {
             ))
             .query(&params)
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn search_symbols(
@@ -472,10 +474,9 @@ impl GitdocClient {
             ))
             .query(&params)
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn semantic_search(
@@ -500,44 +501,9 @@ impl GitdocClient {
             ))
             .query(&params)
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp)
-    }
-
-    pub async fn delete_snapshot(&self, snapshot_id: i64) -> Result<serde_json::Value> {
-        let resp = self
-            .http
-            .delete(format!("{}/snapshots/{}", self.base_url, snapshot_id))
-            .send()
-            .await?
-            .json()
-            .await?;
-        Ok(resp)
-    }
-
-    #[allow(dead_code)]
-    pub async fn delete_repo(&self, repo_id: &str) -> Result<serde_json::Value> {
-        let resp = self
-            .http
-            .delete(format!("{}/repos/{}", self.base_url, repo_id))
-            .send()
-            .await?
-            .json()
-            .await?;
-        Ok(resp)
-    }
-
-    pub async fn gc(&self) -> Result<serde_json::Value> {
-        let resp = self
-            .http
-            .post(format!("{}/admin/gc", self.base_url))
-            .send()
-            .await?
-            .json()
-            .await?;
-        Ok(resp)
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 
     pub async fn diff_symbols(
@@ -559,7 +525,8 @@ impl GitdocClient {
             url.push('?');
             url.push_str(&params.join("&"));
         }
-        let resp = self.http.get(&url).send().await?.json().await?;
-        Ok(resp)
+        let resp = self.http.get(&url).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
     }
 }

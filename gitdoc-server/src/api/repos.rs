@@ -14,8 +14,7 @@ use crate::git_ops;
 pub struct CreateRepoBody {
     pub id: String,
     pub name: String,
-    pub url: Option<String>,
-    pub path: Option<String>,
+    pub url: String,
 }
 
 pub async fn create_repo(
@@ -25,35 +24,22 @@ pub async fn create_repo(
     if body.id.is_empty() || body.name.is_empty() {
         return Err(GitdocError::BadRequest("id and name must be non-empty".into()));
     }
+    if body.url.is_empty() {
+        return Err(GitdocError::BadRequest("url must be non-empty".into()));
+    }
 
-    let (repo_path, url) = match (&body.url, &body.path) {
-        (Some(url), None) => {
-            // URL mode: clone into repos_dir/{repo_id}
-            let dest = git_ops::repo_clone_path(&state.config.repos_dir, &body.id);
-            if let Err(e) = git_ops::clone_repo(url, &dest).await {
-                // Clean up partial clone
-                let _ = tokio::fs::remove_dir_all(&dest).await;
-                return Err(GitdocError::BadRequest(format!("clone failed: {e}")));
-            }
-            let path_str = dest.to_string_lossy().into_owned();
-            (path_str, Some(url.clone()))
-        }
-        (None, Some(path)) => {
-            if path.is_empty() {
-                return Err(GitdocError::BadRequest("path must be non-empty".into()));
-            }
-            (path.clone(), None)
-        }
-        _ => {
-            return Err(GitdocError::BadRequest(
-                "exactly one of 'url' or 'path' must be provided".into(),
-            ));
-        }
-    };
+    // Clone into repos_dir/{repo_id}
+    let dest = git_ops::repo_clone_path(&state.config.repos_dir, &body.id);
+    if let Err(e) = git_ops::clone_repo(&body.url, &dest).await {
+        // Clean up partial clone
+        let _ = tokio::fs::remove_dir_all(&dest).await;
+        return Err(GitdocError::BadRequest(format!("clone failed: {e}")));
+    }
+    let repo_path = dest.to_string_lossy().into_owned();
 
     state
         .db
-        .insert_repo(&body.id, &repo_path, &body.name, url.as_deref())
+        .insert_repo(&body.id, &repo_path, &body.name, Some(&body.url))
         .await?;
 
     Ok((
@@ -103,13 +89,11 @@ pub async fn index_repo(
     let repo = state.db.get_repo(&repo_id).await?
         .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
 
-    // Auto-fetch if requested and repo has a URL
+    // Auto-fetch if requested
     if body.fetch {
-        if repo.url.is_some() {
-            git_ops::fetch_and_reset(std::path::Path::new(&repo.path))
-                .await
-                .map_err(|e| GitdocError::BadRequest(format!("fetch failed: {e}")))?;
-        }
+        git_ops::fetch_and_reset(std::path::Path::new(&repo.path))
+            .await
+            .map_err(|e| GitdocError::BadRequest(format!("fetch failed: {e}")))?;
     }
 
     let db = Arc::clone(&state.db);
@@ -143,12 +127,6 @@ pub async fn fetch_repo(
     let repo = state.db.get_repo(&repo_id).await?
         .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
 
-    if repo.url.is_none() {
-        return Err(GitdocError::BadRequest(
-            "fetch is only supported for URL-cloned repos".into(),
-        ));
-    }
-
     git_ops::fetch_and_reset(std::path::Path::new(&repo.path))
         .await
         .map_err(|e| GitdocError::BadRequest(format!("fetch failed: {e}")))?;
@@ -168,11 +146,9 @@ pub async fn delete_repo(
         return Err(GitdocError::NotFound("repo not found".into()));
     }
 
-    // Clean up cloned directory if this was a URL-cloned repo
+    // Clean up cloned directory
     if let Some(repo) = repo {
-        if repo.url.is_some() {
-            let _ = tokio::fs::remove_dir_all(&repo.path).await;
-        }
+        let _ = tokio::fs::remove_dir_all(&repo.path).await;
     }
 
     let gc_stats = state.db.gc_orphans().await?;
