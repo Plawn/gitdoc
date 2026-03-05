@@ -18,7 +18,7 @@ pub struct PublicApiQuery {
 }
 
 #[derive(Serialize)]
-struct PublicApiEntry {
+pub struct PublicApiEntry {
     id: i64,
     name: String,
     qualified_name: String,
@@ -32,18 +32,26 @@ struct PublicApiEntry {
 }
 
 #[derive(Serialize)]
-struct PublicApiMethod {
+pub struct PublicApiMethod {
     id: i64,
     name: String,
     signature: String,
     doc_comment: Option<String>,
 }
 
+#[derive(Serialize)]
+pub struct PublicApiResponse {
+    snapshot_id: i64,
+    module_path: Option<String>,
+    modules: BTreeMap<String, Vec<PublicApiEntry>>,
+    total_items: usize,
+}
+
 pub async fn get_public_api(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
     Query(q): Query<PublicApiQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<PublicApiResponse>, GitdocError> {
     let limit = q.limit.unwrap_or(2000);
     let offset = q.offset.unwrap_or(0);
 
@@ -119,16 +127,17 @@ pub async fn get_public_api(
     }
 
     // Group by module
-    let mut modules: BTreeMap<String, Vec<&PublicApiEntry>> = BTreeMap::new();
-    for entry in &entries {
+    let total_items = entries.len();
+    let mut modules: BTreeMap<String, Vec<PublicApiEntry>> = BTreeMap::new();
+    for entry in entries {
         let module = path_to_module(&entry.file_path);
         modules.entry(module).or_default().push(entry);
     }
 
-    Ok(Json(serde_json::json!({
-        "snapshot_id": snapshot_id,
-        "module_path": q.module_path,
-        "modules": modules,
-        "total_items": entries.len(),
-    })))
+    Ok(Json(PublicApiResponse {
+        snapshot_id,
+        module_path: q.module_path,
+        modules,
+        total_items,
+    }))
 }

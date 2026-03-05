@@ -13,6 +13,7 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::client::GitdocClient;
 use crate::config::McpMode;
+use crate::instructions::{SIMPLE_INSTRUCTIONS, GRANULAR_INSTRUCTIONS};
 use crate::params::*;
 use crate::snapshot_resolver::resolve_snapshot;
 
@@ -34,6 +35,12 @@ fn text_result(text: String) -> Result<CallToolResult, McpError> {
 
 fn err_result(msg: String) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::error(vec![Content::text(msg)]))
+}
+
+fn json_result<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpError> {
+    let text = serde_json::to_string_pretty(value)
+        .unwrap_or_else(|e| format!("{{\"error\": \"serialization failed: {e}\"}}"  ));
+    text_result(text)
 }
 
 #[tool_router]
@@ -91,6 +98,13 @@ impl GitdocMcpServer {
         Ok(())
     }
 
+    /// Resolve a snapshot ID from repo_id + optional ref, returning an MCP-friendly error.
+    async fn resolve_snapshot_id(&self, repo_id: &str, reference: Option<&str>) -> Result<i64, String> {
+        resolve_snapshot(&self.client, repo_id, reference)
+            .await
+            .map_err(|e| format!("error resolving snapshot: {e}"))
+    }
+
     #[tool(description = "Check if the GitDoc server is reachable. Returns 'pong' on success. Call this first if other tools return connection errors.")]
     async fn ping(&self) -> Result<CallToolResult, McpError> {
         match self.client.health().await {
@@ -103,7 +117,7 @@ impl GitdocMcpServer {
     #[tool(description = "List all registered repositories with their IDs, names, paths, and clone URLs. Use this to discover available repos before querying them.")]
     async fn list_repos(&self) -> Result<CallToolResult, McpError> {
         match self.client.list_repos().await {
-            Ok(repos) => text_result(serde_json::to_string_pretty(&repos).unwrap()),
+            Ok(repos) => json_result(&repos),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -115,7 +129,7 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
         match self.client.create_repo(&p.id, &p.name, &p.url).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -128,7 +142,7 @@ impl GitdocMcpServer {
         self.check_granular()?;
         let p = params.0;
         match self.client.fetch_repo(&p.repo_id).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -141,7 +155,7 @@ impl GitdocMcpServer {
         let p = params.0;
         let commit = p.commit.as_deref().unwrap_or("HEAD");
         match self.client.index_repo(&p.repo_id, commit, p.label.as_deref(), p.fetch.unwrap_or(false)).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -152,12 +166,12 @@ impl GitdocMcpServer {
         params: Parameters<RepoRefParams>,
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.get_overview(snapshot_id).await {
-            Ok(overview) => text_result(serde_json::to_string_pretty(&overview).unwrap()),
+            Ok(overview) => json_result(&overview),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -169,12 +183,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.list_docs(snapshot_id).await {
-            Ok(docs) => text_result(serde_json::to_string_pretty(&docs).unwrap()),
+            Ok(docs) => json_result(&docs),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -186,12 +200,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.read_doc(snapshot_id, &p.path).await {
-            Ok(doc) => text_result(serde_json::to_string_pretty(&doc).unwrap()),
+            Ok(doc) => json_result(&doc),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -203,16 +217,16 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self
             .client
             .list_symbols(snapshot_id, p.kind.as_deref(), None, p.file_path.as_deref(), p.include_private)
             .await
         {
-            Ok(symbols) => text_result(serde_json::to_string_pretty(&symbols).unwrap()),
+            Ok(symbols) => json_result(&symbols),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -224,7 +238,7 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         match self.client.get_symbol(params.0.symbol_id).await {
-            Ok(detail) => text_result(serde_json::to_string_pretty(&detail).unwrap()),
+            Ok(detail) => json_result(&detail),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -236,16 +250,16 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self
             .client
             .get_references(snapshot_id, p.symbol_id, Some("inbound"), p.kind.as_deref(), p.limit)
             .await
         {
-            Ok(refs) => text_result(serde_json::to_string_pretty(&refs).unwrap()),
+            Ok(refs) => json_result(&refs),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -257,16 +271,16 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self
             .client
             .get_references(snapshot_id, p.symbol_id, Some("outbound"), p.kind.as_deref(), p.limit)
             .await
         {
-            Ok(refs) => text_result(serde_json::to_string_pretty(&refs).unwrap()),
+            Ok(refs) => json_result(&refs),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -278,12 +292,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.get_implementations(snapshot_id, p.symbol_id).await {
-            Ok(impls) => text_result(serde_json::to_string_pretty(&impls).unwrap()),
+            Ok(impls) => json_result(&impls),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -295,16 +309,16 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let from_id = match resolve_snapshot(&self.client, &p.repo_id, p.from_ref.as_deref()).await {
+        let from_id = match self.resolve_snapshot_id(&p.repo_id, p.from_ref.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving 'from' snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
-        let to_id = match resolve_snapshot(&self.client, &p.repo_id, p.to_ref.as_deref()).await {
+        let to_id = match self.resolve_snapshot_id(&p.repo_id, p.to_ref.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving 'to' snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.diff_symbols(from_id, to_id, p.kind.as_deref(), p.include_private).await {
-            Ok(diff) => text_result(serde_json::to_string_pretty(&diff).unwrap()),
+            Ok(diff) => json_result(&diff),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -316,12 +330,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.search_docs(snapshot_id, &p.query, p.limit).await {
-            Ok(results) => text_result(serde_json::to_string_pretty(&results).unwrap()),
+            Ok(results) => json_result(&results),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -333,12 +347,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.search_symbols(snapshot_id, &p.query, p.kind.as_deref(), p.visibility.as_deref(), p.limit).await {
-            Ok(results) => text_result(serde_json::to_string_pretty(&results).unwrap()),
+            Ok(results) => json_result(&results),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -350,12 +364,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.get_public_api(snapshot_id, p.module_path.as_deref(), p.limit, p.offset).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -367,12 +381,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.get_module_tree(snapshot_id, p.depth, p.include_signatures).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -384,12 +398,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.get_type_context(snapshot_id, p.symbol_id).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -401,12 +415,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.get_examples(snapshot_id, p.symbol_id).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -418,12 +432,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.summarize(snapshot_id, &p.scope).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -435,12 +449,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.get_summary(snapshot_id, p.scope.as_deref()).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -452,12 +466,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.explain(snapshot_id, &p.query, p.synthesize, p.limit).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -469,12 +483,12 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.semantic_search(snapshot_id, &p.query, p.scope.as_deref(), p.limit).await {
-            Ok(results) => text_result(serde_json::to_string_pretty(&results).unwrap()),
+            Ok(results) => json_result(&results),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -485,9 +499,9 @@ impl GitdocMcpServer {
         params: Parameters<AskParams>,
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
 
         // Auto-generate cheatsheet if missing
@@ -543,7 +557,7 @@ impl GitdocMcpServer {
         self.check_granular()?;
         let p = params.0;
         match self.client.get_cheatsheet(&p.repo_id).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -555,12 +569,229 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
         match self.client.generate_cheatsheet(&p.repo_id, snapshot_id, Some("manual")).await {
-            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    // --- Architect tools ---
+
+    #[tool(description = "List all library profiles in the Architect knowledge base. Returns id, name, category, version_hint, source, and last update time. Filter by category (e.g. 'web-framework', 'database') to narrow results.")]
+    async fn list_lib_profiles(
+        &self,
+        params: Parameters<ListLibProfilesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.list_lib_profiles(p.category.as_deref()).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Get the full profile of a library from the Architect knowledge base. Returns detailed information including what it is, key APIs, strengths, limitations, gotchas, and ecosystem fit.")]
+    async fn get_lib_profile(
+        &self,
+        params: Parameters<GetLibProfileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.get_lib_profile(&p.id).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Ingest a library from its git URL into the Architect knowledge base. This clones the repo, indexes it, and uses LLM to generate a structured profile. Use this to add new libraries to the knowledge base for future architecture recommendations.")]
+    async fn ingest_lib(
+        &self,
+        params: Parameters<IngestLibParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+
+        // Step 1: Register repo if not already registered
+        self.log_info(&format!("Ingesting library '{}' from {}...", p.name, p.git_url)).await;
+        let repo_id = format!("lib-{}", p.id);
+        match self.client.create_repo(&repo_id, &p.name, &p.git_url).await {
+            Ok(_) => self.log_info("Repository registered").await,
+            Err(e) => {
+                let err_str = e.to_string();
+                if !err_str.contains("already exists") && !err_str.contains("409") {
+                    return err_result(format!("error registering repo: {e}"));
+                }
+                self.log_info("Repository already registered").await;
+            }
+        }
+
+        // Step 2: Index repo
+        self.log_info("Indexing repository...").await;
+        let index_result = match self.client.index_repo(&repo_id, "HEAD", Some("latest"), true).await {
+            Ok(r) => r,
+            Err(e) => return err_result(format!("error indexing repo: {e}")),
+        };
+        self.log_info(&format!("Indexed: {} symbols", index_result.symbols_count)).await;
+
+        // Step 3: Create initial profile entry then generate
+        let body = serde_json::json!({
+            "id": p.id,
+            "name": p.name,
+            "category": p.category.unwrap_or_default(),
+            "version_hint": p.version_hint.unwrap_or_default(),
+        });
+        let _ = self.client.create_lib_profile(&body).await;
+
+        // Step 4: Generate profile from indexed repo
+        self.log_info("Generating library profile with LLM...").await;
+        let gen_body = serde_json::json!({
+            "repo_id": repo_id,
+            "snapshot_id": index_result.snapshot_id,
+        });
+        match self.client.generate_lib_profile(&p.id, &gen_body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error generating profile: {e}")),
+        }
+    }
+
+    #[tool(description = "Import a library profile manually into the Architect knowledge base. Use this when the library isn't available as a git repo, or when you want to provide a custom profile. The profile should be structured markdown text.")]
+    async fn import_lib_profile(
+        &self,
+        params: Parameters<ImportLibProfileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let body = serde_json::json!({
+            "id": p.id,
+            "name": p.name,
+            "category": p.category.unwrap_or_default(),
+            "version_hint": p.version_hint.unwrap_or_default(),
+            "profile": p.profile,
+        });
+        match self.client.create_lib_profile(&body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Regenerate the profile of a library that is already indexed. Use this after re-indexing a repo to update the profile with the latest code analysis.")]
+    async fn generate_lib_profile(
+        &self,
+        params: Parameters<GenerateLibProfileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let body = serde_json::json!({
+            "repo_id": p.repo_id,
+            "snapshot_id": p.snapshot_id,
+        });
+        match self.client.generate_lib_profile(&p.id, &body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Delete a library profile from the Architect knowledge base.")]
+    async fn delete_lib_profile(
+        &self,
+        params: Parameters<DeleteLibProfileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.delete_lib_profile(&p.id).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Add a global stack rule to the Architect knowledge base. Stack rules encode technology preferences, constraints, and guidelines (e.g. 'prefer Axum over Actix-web for new Rust services', 'always use connection pooling for databases'). Rules are used by the Architect to inform recommendations.")]
+    async fn add_stack_rule(
+        &self,
+        params: Parameters<AddStackRuleParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let body = serde_json::json!({
+            "rule_type": p.rule_type,
+            "subject": p.subject,
+            "content": p.content,
+            "lib_profile_id": p.lib_profile_id,
+            "priority": p.priority.unwrap_or(0),
+        });
+        match self.client.upsert_stack_rule(&body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "List all stack rules in the Architect knowledge base. Filter by rule_type (e.g. 'prefer', 'avoid', 'guideline') or subject (e.g. 'HTTP framework', 'database').")]
+    async fn list_stack_rules(
+        &self,
+        params: Parameters<ListStackRulesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.list_stack_rules(p.rule_type.as_deref(), p.subject.as_deref()).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Delete a stack rule from the Architect knowledge base.")]
+    async fn delete_stack_rule(
+        &self,
+        params: Parameters<DeleteStackRuleParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.delete_stack_rule(p.id).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Ask the Architect for technology advice. Provide a natural language question about technology choices, library selection, or architecture decisions. The Architect searches its knowledge base of library profiles and stack rules, then uses LLM to synthesize an informed recommendation. Example questions: 'What HTTP framework should I use for Rust?', 'How should I handle database migrations?', 'What's the best approach for async task scheduling?'")]
+    async fn architect_advise(
+        &self,
+        params: Parameters<ArchitectAdviseParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let body = serde_json::json!({
+            "question": p.question,
+            "limit": p.limit.unwrap_or(5),
+        });
+        match self.client.architect_advise(&body).await {
+            Ok(result) => {
+                // Format response nicely
+                let answer = result.get("answer").and_then(|v| v.as_str()).unwrap_or("");
+                let mut output = answer.to_string();
+
+                if let Some(libs) = result.get("relevant_libs").and_then(|v| v.as_array()) {
+                    if !libs.is_empty() {
+                        output.push_str("\n\n---\n**Relevant library profiles:**\n");
+                        for lib in libs {
+                            let id = lib.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                            let score = lib.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                            output.push_str(&format!("- {} (relevance: {:.2})\n", id, score));
+                        }
+                    }
+                }
+                if let Some(rules) = result.get("relevant_rules").and_then(|v| v.as_array()) {
+                    if !rules.is_empty() {
+                        output.push_str("\n**Relevant stack rules:**\n");
+                        for rule in rules {
+                            let id = rule.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                            let score = rule.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                            output.push_str(&format!("- Rule #{} (relevance: {:.2})\n", id, score));
+                        }
+                    }
+                }
+                text_result(output)
+            }
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -571,9 +802,9 @@ impl GitdocMcpServer {
         params: Parameters<ConversationResetParams>,
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
-        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+        let snapshot_id = match self.resolve_snapshot_id(&p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
-            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+            Err(e) => return err_result(e),
         };
 
         let conversation_id = {
@@ -590,6 +821,203 @@ impl GitdocMcpServer {
             }
         } else {
             text_result("No active conversation for this repo.".into())
+        }
+    }
+
+    // --- Project Profiles ---
+
+    #[tool(description = "Create or update a project profile. Defines the technology stack, constraints, and code style for a project. This context is automatically used by architect_advise to provide project-aware recommendations.")]
+    async fn create_project_profile(
+        &self,
+        params: Parameters<CreateProjectProfileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let body = serde_json::json!({
+            "id": p.id,
+            "repo_id": p.repo_id,
+            "name": p.name,
+            "description": p.description.unwrap_or_default(),
+            "stack": p.stack.unwrap_or(serde_json::json!([])),
+            "constraints": p.constraints.unwrap_or_default(),
+            "code_style": p.code_style.unwrap_or_default(),
+        });
+        match self.client.create_project_profile(&body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Get a project profile by ID. Returns the full project definition including stack, constraints, and code style.")]
+    async fn get_project_profile(
+        &self,
+        params: Parameters<GetProjectProfileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.get_project_profile(&p.id).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "List all project profiles in the Architect knowledge base.")]
+    async fn list_project_profiles(
+        &self,
+        _params: Parameters<ListProjectProfilesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        match self.client.list_project_profiles().await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Delete a project profile from the Architect knowledge base.")]
+    async fn delete_project_profile(
+        &self,
+        params: Parameters<DeleteProjectProfileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.delete_project_profile(&p.id).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    // --- Architecture Decisions ---
+
+    #[tool(description = "Record an architecture decision. Captures what was decided, why, what alternatives were considered, and optionally links to a project profile. Decisions are searchable by architect_advise and help inform future recommendations. Use status 'active' (default), 'superseded', or 'reverted'.")]
+    async fn record_decision(
+        &self,
+        params: Parameters<RecordDecisionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let body = serde_json::json!({
+            "project_profile_id": p.project_profile_id,
+            "title": p.title,
+            "context": p.context.unwrap_or_default(),
+            "choice": p.choice,
+            "alternatives": p.alternatives.unwrap_or_default(),
+            "reasoning": p.reasoning.unwrap_or_default(),
+        });
+        match self.client.create_decision(&body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "List architecture decisions. Filter by project_profile_id or status ('active', 'superseded', 'reverted').")]
+    async fn list_decisions(
+        &self,
+        params: Parameters<ListDecisionsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.list_decisions(p.project_profile_id.as_deref(), p.status.as_deref()).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Update an architecture decision's outcome or status. Use this to record what actually happened after a decision was made, or to mark it as 'superseded' or 'reverted'.")]
+    async fn update_decision(
+        &self,
+        params: Parameters<UpdateDecisionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let body = serde_json::json!({
+            "outcome": p.outcome,
+            "status": p.status,
+        });
+        match self.client.update_decision(p.id, &body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    // --- Compare Libs ---
+
+    #[tool(description = "Compare libraries side-by-side. Provide library profile IDs and evaluation criteria. Returns a structured comparison with fit scores, pros/cons, differentiators, and a recommendation. Example: compare_libs(['axum', 'actix-web'], 'building a REST API with WebSocket support')")]
+    async fn compare_libs(
+        &self,
+        params: Parameters<CompareLibsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let body = serde_json::json!({
+            "lib_ids": p.lib_ids,
+            "criteria": p.criteria,
+        });
+        match self.client.compare_libs(&body).await {
+            Ok(result) => {
+                let comparison = result.get("comparison").and_then(|v| v.as_str()).unwrap_or("");
+                text_result(comparison.to_string())
+            }
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    // --- Architecture Patterns ---
+
+    #[tool(description = "Add an architecture pattern to the knowledge base. Patterns describe HOW to use libraries together (e.g. 'JWT auth with axum + tower'). Include code examples, steps, and best practices. Patterns are surfaced by architect_advise when relevant.")]
+    async fn add_pattern(
+        &self,
+        params: Parameters<AddPatternParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let body = serde_json::json!({
+            "name": p.name,
+            "category": p.category.unwrap_or_default(),
+            "description": p.description.unwrap_or_default(),
+            "libs_involved": p.libs_involved.unwrap_or_default(),
+            "pattern_text": p.pattern_text,
+        });
+        match self.client.create_pattern(&body).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "List architecture patterns in the knowledge base. Optionally filter by category.")]
+    async fn list_patterns(
+        &self,
+        params: Parameters<ListPatternsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.list_patterns(p.category.as_deref()).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Get a specific architecture pattern by ID.")]
+    async fn get_pattern(
+        &self,
+        params: Parameters<GetPatternParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.get_pattern(p.id).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Delete an architecture pattern from the knowledge base.")]
+    async fn delete_pattern(
+        &self,
+        params: Parameters<DeletePatternParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.delete_pattern(p.id).await {
+            Ok(result) => json_result(&result),
+            Err(e) => err_result(format!("error: {e}")),
         }
     }
 }
@@ -628,13 +1056,6 @@ impl ServerHandler for GitdocMcpServer {
     }
 }
 
-const SIMPLE_INSTRUCTIONS: &str = r#"# GitDoc MCP — Code Intelligence (Simple Mode)
-
-GitDoc indexes git repositories and lets you ask natural language questions about their code, docs, and architecture.
-
-## Quick Start
-
-1. `list_repos` → check if the repo is already registered
 2. If not: `register_repo(id: "mylib", name: "My Lib", url: "https://github.com/...")` → server clones it
 3. `index_repo(repo_id: "mylib")` → creates a searchable snapshot. **Required before querying.**
 4. `ask(repo_id: "mylib", question: "What does this crate do?")` → get answers with sources
@@ -657,6 +1078,8 @@ GitDoc indexes git repositories and lets you ask natural language questions abou
 | `get_repo_overview` | README + doc listing + top symbols |
 | `ask` | Ask questions — conversational, context-aware |
 | `conversation_reset` | Clear conversation when switching topics |
+| `architect_advise` | Ask for technology/architecture recommendations based on a knowledge base of library profiles, stack rules, project profiles, decisions, and patterns |
+| `compare_libs` | Compare libraries side-by-side with structured fit scores, pros/cons, and recommendation |
 
 ## Tips
 
@@ -753,6 +1176,32 @@ IMPORTANT: Do NOT clone repositories yourself. The server handles all git clonin
 |------|-------------|---------|
 | `ask` | **Ask any question about the codebase** — maintains conversation context across calls, auto-injects cheatsheet | LLM-synthesized answer with source references |
 | `conversation_reset` | Clear conversation history for a repo to start fresh (auto-updates cheatsheet with learnings) | Confirmation message |
+
+### Architect (Technology Knowledge Base)
+| Tool | When to use | Returns |
+|------|-------------|---------|
+| `architect_advise` | **Ask for technology recommendations** — searches lib profiles, stack rules, project profiles, decisions, patterns, and cheatsheets | LLM-synthesized recommendation |
+| `compare_libs` | **Compare libraries side-by-side** — structured comparison with fit scores, pros/cons, recommendation | Structured comparison |
+| `list_lib_profiles` | Browse available library profiles in the knowledge base | List of profiles with id, name, category |
+| `get_lib_profile` | Get full profile of a library (what it is, key APIs, strengths, limitations, gotchas) | Complete profile text |
+| `ingest_lib` | Add a library to the knowledge base from its git URL (clone + index + LLM profile) | Generated profile |
+| `import_lib_profile` | Manually import a library profile (markdown text) | Stored profile |
+| `generate_lib_profile` | Regenerate profile for an already-indexed library | Updated profile |
+| `delete_lib_profile` | Remove a library profile | Confirmation |
+| `add_stack_rule` | Add a global stack rule (e.g. "prefer Axum over Actix-web") | Stored rule |
+| `list_stack_rules` | Browse stack rules (filter by type or subject) | List of rules |
+| `delete_stack_rule` | Remove a stack rule | Confirmation |
+| `create_project_profile` | Define a project's stack, constraints, and code style | Stored profile |
+| `get_project_profile` | Get a project profile | Full project definition |
+| `list_project_profiles` | List all project profiles | Summary list |
+| `delete_project_profile` | Remove a project profile | Confirmation |
+| `record_decision` | Record an architecture decision (title, choice, reasoning, alternatives) | Stored decision |
+| `list_decisions` | List decisions (filter by project, status) | Decision list |
+| `update_decision` | Update a decision's outcome or status (active/superseded/reverted) | Updated decision |
+| `add_pattern` | Add an architecture pattern (e.g. "JWT auth with axum + tower") | Stored pattern |
+| `list_patterns` | List patterns (filter by category) | Pattern list |
+| `get_pattern` | Get a specific pattern | Full pattern with code examples |
+| `delete_pattern` | Remove a pattern | Confirmation |
 
 ### Maintenance
 | Tool | When to use |

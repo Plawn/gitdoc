@@ -150,25 +150,24 @@ impl GitdocClient {
         file_path: Option<&str>,
         include_private: Option<bool>,
     ) -> Result<Vec<SymbolRow>> {
-        let mut url = format!("{}/snapshots/{}/symbols", self.base_url, snapshot_id);
-        let mut params = Vec::new();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(k) = kind {
-            params.push(format!("kind={}", k));
+            params.push(("kind", k.to_string()));
         }
         if let Some(v) = visibility {
-            params.push(format!("visibility={}", v));
+            params.push(("visibility", v.to_string()));
         }
         if let Some(fp) = file_path {
-            params.push(format!("file_path={}", fp));
+            params.push(("file_path", fp.to_string()));
         }
         if let Some(ip) = include_private {
-            params.push(format!("include_private={}", ip));
+            params.push(("include_private", ip.to_string()));
         }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        let resp = self.http.get(&url).send().await?;
+        let resp = self.http
+            .get(format!("{}/snapshots/{}/symbols", self.base_url, snapshot_id))
+            .query(&params)
+            .send()
+            .await?;
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
@@ -191,25 +190,21 @@ impl GitdocClient {
         kind: Option<&str>,
         limit: Option<i64>,
     ) -> Result<Vec<RefWithSymbol>> {
-        let mut url = format!(
-            "{}/snapshots/{}/symbols/{}/references",
-            self.base_url, snapshot_id, symbol_id
-        );
-        let mut params = Vec::new();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(d) = direction {
-            params.push(format!("direction={}", d));
+            params.push(("direction", d.to_string()));
         }
         if let Some(k) = kind {
-            params.push(format!("kind={}", k));
+            params.push(("kind", k.to_string()));
         }
         if let Some(l) = limit {
-            params.push(format!("limit={}", l));
+            params.push(("limit", l.to_string()));
         }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        let resp = self.http.get(&url).send().await?;
+        let resp = self.http
+            .get(format!("{}/snapshots/{}/symbols/{}/references", self.base_url, snapshot_id, symbol_id))
+            .query(&params)
+            .send()
+            .await?;
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
@@ -319,19 +314,18 @@ impl GitdocClient {
         kind: Option<&str>,
         include_private: Option<bool>,
     ) -> Result<DiffResponse> {
-        let mut url = format!("{}/snapshots/{}/diff/{}", self.base_url, from_id, to_id);
-        let mut params = Vec::new();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(k) = kind {
-            params.push(format!("kind={}", k));
+            params.push(("kind", k.to_string()));
         }
         if let Some(ip) = include_private {
-            params.push(format!("include_private={}", ip));
+            params.push(("include_private", ip.to_string()));
         }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        let resp = self.http.get(&url).send().await?;
+        let resp = self.http
+            .get(format!("{}/snapshots/{}/diff/{}", self.base_url, from_id, to_id))
+            .query(&params)
+            .send()
+            .await?;
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
@@ -343,22 +337,21 @@ impl GitdocClient {
         limit: Option<i64>,
         offset: Option<i64>,
     ) -> Result<PublicApiResponse> {
-        let mut url = format!("{}/snapshots/{}/public_api", self.base_url, snapshot_id);
-        let mut params = Vec::new();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(mp) = module_path {
-            params.push(format!("module_path={}", mp));
+            params.push(("module_path", mp.to_string()));
         }
         if let Some(l) = limit {
-            params.push(format!("limit={}", l));
+            params.push(("limit", l.to_string()));
         }
         if let Some(o) = offset {
-            params.push(format!("offset={}", o));
+            params.push(("offset", o.to_string()));
         }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        let resp = self.http.get(&url).send().await?;
+        let resp = self.http
+            .get(format!("{}/snapshots/{}/public_api", self.base_url, snapshot_id))
+            .query(&params)
+            .send()
+            .await?;
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
@@ -369,19 +362,18 @@ impl GitdocClient {
         depth: Option<usize>,
         include_signatures: Option<bool>,
     ) -> Result<ModuleTreeResponse> {
-        let mut url = format!("{}/snapshots/{}/module_tree", self.base_url, snapshot_id);
-        let mut params = Vec::new();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(d) = depth {
-            params.push(format!("depth={}", d));
+            params.push(("depth", d.to_string()));
         }
         if let Some(is) = include_signatures {
-            params.push(format!("include_signatures={}", is));
+            params.push(("include_signatures", is.to_string()));
         }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        let resp = self.http.get(&url).send().await?;
+        let resp = self.http
+            .get(format!("{}/snapshots/{}/module_tree", self.base_url, snapshot_id))
+            .query(&params)
+            .send()
+            .await?;
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
@@ -427,10 +419,8 @@ impl GitdocClient {
     ) -> Result<SummarizeResponse> {
         let resp = self
             .http
-            .post(format!(
-                "{}/snapshots/{}/summarize?scope={}",
-                self.base_url, snapshot_id, scope
-            ))
+            .post(format!("{}/snapshots/{}/summarize", self.base_url, snapshot_id))
+            .query(&[("scope", scope)])
             .send()
             .await?;
         let resp = check_response(resp).await?;
@@ -547,19 +537,18 @@ impl GitdocClient {
         limit: Option<i64>,
         offset: Option<i64>,
     ) -> Result<serde_json::Value> {
-        let mut url = format!("{}/repos/{}/cheatsheet/patches", self.base_url, repo_id);
-        let mut params = Vec::new();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(l) = limit {
-            params.push(format!("limit={}", l));
+            params.push(("limit", l.to_string()));
         }
         if let Some(o) = offset {
-            params.push(format!("offset={}", o));
+            params.push(("offset", o.to_string()));
         }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        let resp = self.http.get(&url).send().await?;
+        let resp = self.http
+            .get(format!("{}/repos/{}/cheatsheet/patches", self.base_url, repo_id))
+            .query(&params)
+            .send()
+            .await?;
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
@@ -569,11 +558,15 @@ impl GitdocClient {
         snapshot_id: i64,
         scope: Option<&str>,
     ) -> Result<serde_json::Value> {
-        let mut url = format!("{}/snapshots/{}/summary", self.base_url, snapshot_id);
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(s) = scope {
-            url.push_str(&format!("?scope={}", s));
+            params.push(("scope", s.to_string()));
         }
-        let resp = self.http.get(&url).send().await?;
+        let resp = self.http
+            .get(format!("{}/snapshots/{}/summary", self.base_url, snapshot_id))
+            .query(&params)
+            .send()
+            .await?;
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
@@ -627,7 +620,6 @@ impl GitdocClient {
                                 let event = CheatsheetProgressEvent {
                                     stage: json.get("stage").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                                     message: json.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                    patch_id: json.get("patch_id").and_then(|v| v.as_i64()),
                                 };
                                 if tx.send(event).await.is_err() {
                                     return;
@@ -641,10 +633,223 @@ impl GitdocClient {
 
         Ok(rx)
     }
+
+    // --- Architect methods ---
+
+    pub async fn list_lib_profiles(&self, category: Option<&str>) -> Result<serde_json::Value> {
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(cat) = category {
+            params.push(("category", cat.to_string()));
+        }
+        let resp = self.http
+            .get(format!("{}/architect/libs", self.base_url))
+            .query(&params)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_lib_profile(&self, id: &str) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .get(format!("{}/architect/libs/{}", self.base_url, id))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn create_lib_profile(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .post(format!("{}/architect/libs", self.base_url))
+            .json(body)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn generate_lib_profile(&self, id: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .post(format!("{}/architect/libs/{}/generate", self.base_url, id))
+            .json(body)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_lib_profile(&self, id: &str) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .delete(format!("{}/architect/libs/{}", self.base_url, id))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn list_stack_rules(
+        &self,
+        rule_type: Option<&str>,
+        subject: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(rt) = rule_type {
+            params.push(("rule_type", rt.to_string()));
+        }
+        if let Some(sub) = subject {
+            params.push(("subject", sub.to_string()));
+        }
+        let resp = self.http
+            .get(format!("{}/architect/rules", self.base_url))
+            .query(&params)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn upsert_stack_rule(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .post(format!("{}/architect/rules", self.base_url))
+            .json(body)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_stack_rule(&self, id: i64) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .delete(format!("{}/architect/rules/{}", self.base_url, id))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn architect_advise(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .post(format!("{}/architect/advise", self.base_url))
+            .json(body)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    // --- Project Profiles ---
+
+    pub async fn list_project_profiles(&self) -> Result<serde_json::Value> {
+        let resp = self.http.get(format!("{}/architect/projects", self.base_url)).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn create_project_profile(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self.http.post(format!("{}/architect/projects", self.base_url)).json(body).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_project_profile(&self, id: &str) -> Result<serde_json::Value> {
+        let resp = self.http.get(format!("{}/architect/projects/{}", self.base_url, id)).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_project_profile(&self, id: &str) -> Result<serde_json::Value> {
+        let resp = self.http.delete(format!("{}/architect/projects/{}", self.base_url, id)).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    // --- Architecture Decisions ---
+
+    pub async fn create_decision(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self.http.post(format!("{}/architect/decisions", self.base_url)).json(body).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn list_decisions(
+        &self,
+        project_profile_id: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(pid) = project_profile_id {
+            params.push(("project_profile_id", pid.to_string()));
+        }
+        if let Some(s) = status {
+            params.push(("status", s.to_string()));
+        }
+        let resp = self.http
+            .get(format!("{}/architect/decisions", self.base_url))
+            .query(&params)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn update_decision(&self, id: i64, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self.http.put(format!("{}/architect/decisions/{}", self.base_url, id)).json(body).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    // --- Compare Libs ---
+
+    pub async fn compare_libs(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self.http.post(format!("{}/architect/compare", self.base_url)).json(body).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    // --- Architecture Patterns ---
+
+    pub async fn list_patterns(&self, category: Option<&str>) -> Result<serde_json::Value> {
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(cat) = category {
+            params.push(("category", cat.to_string()));
+        }
+        let resp = self.http
+            .get(format!("{}/architect/patterns", self.base_url))
+            .query(&params)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn create_pattern(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+        let resp = self.http.post(format!("{}/architect/patterns", self.base_url)).json(body).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_pattern(&self, id: i64) -> Result<serde_json::Value> {
+        let resp = self.http.get(format!("{}/architect/patterns/{}", self.base_url, id)).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_pattern(&self, id: i64) -> Result<serde_json::Value> {
+        let resp = self.http.delete(format!("{}/architect/patterns/{}", self.base_url, id)).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
 }
 
 pub struct CheatsheetProgressEvent {
     pub stage: String,
     pub message: String,
-    pub patch_id: Option<i64>,
 }

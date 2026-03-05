@@ -6,10 +6,10 @@ edition = "2024"
 [dependencies]
 mcp-framework = { git = "https://github.com/Plawn/mcp-framework", tag = "v0.1.8" }
 rmcp = { version = "0.5", features = ["server"] }
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { workspace = true, features = ["stream"] }
 futures-util = "0.3"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1"
-tracing = "0.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }

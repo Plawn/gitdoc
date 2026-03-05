@@ -17,7 +17,7 @@ pub struct ModuleTreeQuery {
 }
 
 #[derive(Serialize)]
-struct ModuleTreeNode {
+pub struct ModuleTreeNode {
     name: String,
     path: String,
     doc_comment: Option<String>,
@@ -29,17 +29,23 @@ struct ModuleTreeNode {
 }
 
 #[derive(Serialize, Clone)]
-struct ModuleTreeSymbol {
+pub struct ModuleTreeSymbol {
     name: String,
     kind: String,
     signature: String,
+}
+
+#[derive(Serialize)]
+pub struct ModuleTreeResponse {
+    snapshot_id: i64,
+    tree: Vec<ModuleTreeNode>,
 }
 
 pub async fn get_module_tree(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
     Query(q): Query<ModuleTreeQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<ModuleTreeResponse>, GitdocError> {
     let max_depth = q.depth.unwrap_or(usize::MAX);
     let include_sigs = q.include_signatures.unwrap_or(false);
 
@@ -94,10 +100,10 @@ pub async fn get_module_tree(
 
     let root = build_module_tree(&module_info, &module_docs, &sig_map, max_depth);
 
-    Ok(Json(serde_json::json!({
-        "snapshot_id": snapshot_id,
-        "tree": root,
-    })))
+    Ok(Json(ModuleTreeResponse {
+        snapshot_id,
+        tree: root,
+    }))
 }
 
 fn build_module_tree(

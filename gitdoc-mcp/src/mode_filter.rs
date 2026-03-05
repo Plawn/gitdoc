@@ -11,6 +11,8 @@ const SIMPLE_TOOLS: &[&str] = &[
     "get_repo_overview",
     "ask",
     "conversation_reset",
+    "architect_advise",
+    "compare_libs",
 ];
 
 pub struct ModeFilter {

@@ -21,7 +21,7 @@ pub struct ExplainQuery {
 }
 
 #[derive(Serialize)]
-struct ExplainResult {
+pub struct ExplainResult {
     query: String,
     /// Relevant symbols found, with their context
     relevant_symbols: Vec<RelevantSymbol>,
@@ -33,7 +33,7 @@ struct ExplainResult {
 }
 
 #[derive(Serialize)]
-struct RelevantSymbol {
+pub struct RelevantSymbol {
     id: i64,
     name: String,
     qualified_name: String,
@@ -51,13 +51,13 @@ struct RelevantSymbol {
 }
 
 #[derive(Serialize)]
-struct MethodInfo {
+pub struct MethodInfo {
     name: String,
     signature: String,
 }
 
 #[derive(Serialize)]
-struct RelevantDoc {
+pub struct RelevantDoc {
     file_path: String,
     title: Option<String>,
     snippet: String,
@@ -68,7 +68,7 @@ pub async fn explain(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
     Query(q): Query<ExplainQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<ExplainResult>, GitdocError> {
     if q.q.is_empty() {
         return Err(GitdocError::BadRequest("q must be non-empty".into()));
     }
@@ -181,7 +181,7 @@ pub async fn explain(
         synthesis,
     };
 
-    Ok(Json(serde_json::to_value(result).unwrap()))
+    Ok(Json(result))
 }
 
 async fn synthesize_answer(

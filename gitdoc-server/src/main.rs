@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(cfg),
     });
 
-    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries, converse, cheatsheet};
+    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries, converse, cheatsheet, architect};
     use gitdoc_server::api::search as search_api;
 
     let app = Router::new()
@@ -116,6 +116,19 @@ async fn main() -> anyhow::Result<()> {
         .route("/snapshots/{snapshot_id}/search/symbols", get(search_api::search_symbols))
         .route("/snapshots/{snapshot_id}/search/semantic", get(search_api::search_semantic))
         .route("/symbols/{symbol_id}", get(symbols::get_symbol))
+        .route("/architect/libs", get(architect::list_libs).post(architect::create_lib))
+        .route("/architect/libs/{id}", get(architect::get_lib).delete(architect::delete_lib))
+        .route("/architect/libs/{id}/generate", post(architect::generate_lib_profile_handler))
+        .route("/architect/rules", get(architect::list_rules).post(architect::upsert_rule))
+        .route("/architect/rules/{id}", delete(architect::delete_rule))
+        .route("/architect/advise", post(architect::advise))
+        .route("/architect/compare", post(architect::compare))
+        .route("/architect/projects", get(architect::list_projects).post(architect::create_project))
+        .route("/architect/projects/{id}", get(architect::get_project).delete(architect::delete_project))
+        .route("/architect/decisions", get(architect::list_decisions).post(architect::create_decision))
+        .route("/architect/decisions/{id}", get(architect::get_decision).put(architect::update_decision).delete(architect::delete_decision))
+        .route("/architect/patterns", get(architect::list_patterns).post(architect::create_pattern))
+        .route("/architect/patterns/{id}", get(architect::get_pattern).delete(architect::delete_pattern))
         .route("/admin/gc", post(search_api::gc))
         .layer(TraceLayer::new_for_http())
         .with_state(state);

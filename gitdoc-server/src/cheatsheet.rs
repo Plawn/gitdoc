@@ -4,6 +4,7 @@ use anyhow::Result;
 use llm_ai::{CompletionMessage, OpenAiCompatibleClient, ResponseFormat, Role};
 
 use crate::db::Database;
+use crate::embeddings::{self, EmbeddingProvider};
 
 /// Generate an initial cheatsheet from a snapshot's structure.
 pub async fn generate_cheatsheet(
@@ -181,6 +182,7 @@ pub async fn generate_and_store_cheatsheet(
     snapshot_id: Option<i64>,
     trigger: &str,
     learnings: Option<&str>,
+    embedder: Option<&dyn EmbeddingProvider>,
 ) -> Result<i64> {
     let existing = db.get_cheatsheet(repo_id).await?;
 
@@ -196,9 +198,22 @@ pub async fn generate_and_store_cheatsheet(
         }
     };
 
+    // Generate embedding for architect search
+    let content_embedding = if let Some(emb) = embedder {
+        match emb.embed_query(&new_content).await {
+            Ok(vec) => Some(embeddings::to_pgvector(&vec)),
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to embed cheatsheet content");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let model_name = client.name();
     let patch_id = db
-        .upsert_cheatsheet(repo_id, &new_content, snapshot_id, &change_summary, trigger, model_name)
+        .upsert_cheatsheet(repo_id, &new_content, snapshot_id, &change_summary, trigger, model_name, content_embedding)
         .await?;
 
     Ok(patch_id)

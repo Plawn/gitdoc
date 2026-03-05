@@ -35,7 +35,8 @@ Multiple agents share the same indexed data without re-indexing.
 - **File deduplication** — SHA-256 content addressing; unchanged files across commits share all parsed data
 - **Persistent repo cheatsheets** — LLM-generated architecture/types/patterns summaries that accumulate knowledge across sessions
 - **Conversational mode** — multi-turn Q&A with context persistence; cheatsheet auto-injected into prompts
-- **Two MCP modes** — simple (7 tools, conversational) for coding agents; granular (21 tools) for fine-grained control
+- **Architect module** — technology advisor backed by a knowledge base of library profiles and stack rules; auto-injects relevant guidance into conversations or available on-demand via `architect_advise`
+- **Two MCP modes** — simple (8 tools, conversational) for coding agents; granular (31 tools) for fine-grained control
 
 ### Supported Languages
 
@@ -139,6 +140,7 @@ For granular mode (all tools):
 | `GITDOC_LLM_KIND` | `azure` | Engine kind: `azure`, `azure_inference`, or `ollama` |
 | `GITDOC_MAX_PROMPT_TOKENS` | `12000` | Total token budget for conversation prompts |
 | `GITDOC_CONDENSATION_THRESHOLD` | `6000` | Trigger history condensation after this many raw turn tokens |
+| `GITDOC_ARCHITECT_MODE` | `tools_only` | Architect mode: `auto` (inject guidance into conversations) or `tools_only` (on-demand only) |
 | `RUST_LOG` | `info` | Tracing filter directive |
 
 If neither embedding key is set, semantic search returns `503 Service Unavailable`. When both are set, Cohere takes precedence. If no LLM endpoint is set, summaries, cheatsheets, and conversational mode are unavailable.
@@ -250,6 +252,22 @@ POST   /snapshots/:id/converse                          Multi-turn Q&A  { q, con
 DELETE /snapshots/:id/conversations/:conversation_id    Delete conversation (auto-updates cheatsheet)
 ```
 
+### Architect
+
+```
+GET    /architect/libs                   List library profiles  ?category=
+POST   /architect/libs                   Create/update a lib profile  { id, name, category?, version_hint?, profile? }
+GET    /architect/libs/:id               Get full library profile
+DELETE /architect/libs/:id               Delete a library profile
+POST   /architect/libs/:id/generate      Generate profile from indexed repo  { repo_id, snapshot_id? }
+GET    /architect/rules                  List stack rules  ?rule_type=&subject=
+POST   /architect/rules                  Create/update a stack rule  { id?, rule_type, subject, content, lib_profile_id?, priority? }
+DELETE /architect/rules/:id              Delete a stack rule
+POST   /architect/advise                 Ask for architecture advice  { question, limit? }
+```
+
+When `GITDOC_ARCHITECT_MODE=auto`, relevant library profiles and stack rules are automatically injected into conversation prompts based on semantic similarity to the user's question.
+
 ### Diff
 
 ```
@@ -276,12 +294,12 @@ GET  /health    → "ok"
 
 The MCP server supports two modes, selected via `GITDOC_MCP_MODE`:
 
-- **Simple mode** (default) — 7 tools centered around conversational `ask`. Best for coding agents like Claude Code that benefit from fewer, high-level tools.
-- **Granular mode** — all 21 tools for fine-grained control over docs, symbols, references, and search.
+- **Simple mode** (default) — 8 tools centered around conversational `ask` + `architect_advise`. Best for coding agents like Claude Code that benefit from fewer, high-level tools.
+- **Granular mode** — all 31 tools for fine-grained control over docs, symbols, references, search, and the Architect knowledge base.
 
 Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most recent snapshot is used.
 
-### Simple Mode Tools (7)
+### Simple Mode Tools (8)
 
 | Tool | Description |
 |------|-------------|
@@ -292,8 +310,9 @@ Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most rece
 | `get_repo_overview` | README + doc tree + top-level public symbols (start here) |
 | `ask` | Multi-turn Q&A — maintains context across calls, auto-generates and injects cheatsheet |
 | `conversation_reset` | Clear conversation history (auto-updates cheatsheet with learnings) |
+| `architect_advise` | Ask for technology/architecture recommendations based on the knowledge base |
 
-### Additional Granular Mode Tools (+14)
+### Additional Granular Mode Tools (+23)
 
 #### Setup
 | Tool | Description |
@@ -342,6 +361,19 @@ Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most rece
 |------|-------------|
 | `get_cheatsheet` | Read the persistent repo cheatsheet (architecture, key types, patterns, gotchas) |
 | `update_cheatsheet` | Generate or regenerate the cheatsheet (LLM-powered) |
+
+#### Architect (Knowledge Base)
+| Tool | Description |
+|------|-------------|
+| `list_lib_profiles` | List library profiles in the knowledge base |
+| `get_lib_profile` | Get full profile of a library (what it is, key APIs, strengths, limitations, gotchas) |
+| `ingest_lib` | Ingest a library from its git URL (clone + index + LLM profile generation) |
+| `import_lib_profile` | Import a library profile manually (markdown text) |
+| `generate_lib_profile` | Regenerate a profile for an already-indexed library |
+| `delete_lib_profile` | Delete a library profile |
+| `add_stack_rule` | Add a global stack rule (preferences, constraints, guidelines) |
+| `list_stack_rules` | List stack rules with optional filters |
+| `delete_stack_rule` | Delete a stack rule |
 
 #### Maintenance
 | Tool | Description |

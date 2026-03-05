@@ -27,7 +27,7 @@ pub async fn search_docs(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
     Query(q): Query<DocSearchQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::search::DocSearchResult>>, GitdocError> {
     if q.q.is_empty() {
         return Err(GitdocError::BadRequest("q must be non-empty".into()));
     }
@@ -42,14 +42,14 @@ pub async fn search_docs(
     })
     .await??;
 
-    Ok(Json(serde_json::json!(result)))
+    Ok(Json(result))
 }
 
 pub async fn search_symbols(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
     Query(q): Query<SymbolSearchQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::search::SymbolSearchResult>>, GitdocError> {
     if q.q.is_empty() {
         return Err(GitdocError::BadRequest("q must be non-empty".into()));
     }
@@ -72,7 +72,7 @@ pub async fn search_symbols(
     })
     .await??;
 
-    Ok(Json(serde_json::json!(result)))
+    Ok(Json(result))
 }
 
 // --- Semantic search ---
@@ -85,7 +85,7 @@ pub struct SemanticSearchQuery {
 }
 
 #[derive(serde::Serialize)]
-struct SemanticHit {
+pub struct SemanticHit {
     source_type: String,
     source_id: i64,
     score: f64,
@@ -97,13 +97,13 @@ struct SemanticHit {
 }
 
 #[derive(serde::Serialize)]
-struct DocMeta {
+pub struct DocMeta {
     file_path: String,
     title: Option<String>,
 }
 
 #[derive(serde::Serialize)]
-struct SymbolMeta {
+pub struct SymbolMeta {
     name: String,
     qualified_name: String,
     kind: String,
@@ -116,7 +116,7 @@ pub async fn search_semantic(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
     Query(q): Query<SemanticSearchQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<SemanticHit>>, GitdocError> {
     if q.q.is_empty() {
         return Err(GitdocError::BadRequest("q must be non-empty".into()));
     }
@@ -179,12 +179,12 @@ pub async fn search_semantic(
         hits.push(hit);
     }
 
-    Ok(Json(serde_json::json!(hits)))
+    Ok(Json(hits))
 }
 
 pub async fn gc(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<crate::db::GcStats>, GitdocError> {
     let stats = state.db.gc_orphans().await?;
-    Ok(Json(serde_json::json!(stats)))
+    Ok(Json(stats))
 }

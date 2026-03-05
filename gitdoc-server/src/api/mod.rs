@@ -9,3 +9,6 @@ pub mod search;
 pub mod explain;
 pub mod converse;
 pub mod cheatsheet;
+pub mod architect;
+pub mod prompt_budget;
+pub mod condensation;

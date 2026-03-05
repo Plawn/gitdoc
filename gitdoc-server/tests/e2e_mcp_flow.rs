@@ -148,6 +148,9 @@ async fn start_server(db: Arc<Database>, repos_dir: &Path) -> String {
         ],
         embedding: None,
         llm: None,
+        max_prompt_tokens: 12000,
+        condensation_threshold: 6000,
+        architect_mode: config::ArchitectMode::ToolsOnly,
     });
 
     let state = Arc::new(AppState {

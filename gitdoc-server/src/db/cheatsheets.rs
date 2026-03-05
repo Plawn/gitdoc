@@ -22,6 +22,7 @@ impl super::Database {
         change_summary: &str,
         trigger: &str,
         model: &str,
+        content_embedding: Option<pgvector::Vector>,
     ) -> Result<i64> {
         let mut tx = self.pool.begin().await?;
 
@@ -35,18 +36,20 @@ impl super::Database {
 
         // Upsert the live row
         sqlx::query(
-            "INSERT INTO repo_cheatsheets (repo_id, content, snapshot_id, model, updated_at)
-             VALUES ($1, $2, $3, $4, NOW())
+            "INSERT INTO repo_cheatsheets (repo_id, content, snapshot_id, model, content_embedding, updated_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())
              ON CONFLICT (repo_id)
              DO UPDATE SET content = EXCLUDED.content,
                            snapshot_id = EXCLUDED.snapshot_id,
                            model = EXCLUDED.model,
+                           content_embedding = EXCLUDED.content_embedding,
                            updated_at = NOW()",
         )
         .bind(repo_id)
         .bind(new_content)
         .bind(snapshot_id)
         .bind(model)
+        .bind(content_embedding)
         .execute(&mut *tx)
         .await?;
 

@@ -232,16 +232,6 @@ pub struct ExamplesResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct SummaryRow {
-    pub id: i64,
-    pub snapshot_id: i64,
-    pub scope: String,
-    pub content: String,
-    pub model: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct ConversationResponse {
     pub conversation_id: i64,
     pub answer: String,

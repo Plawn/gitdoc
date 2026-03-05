@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -12,10 +12,78 @@ use crate::error::GitdocError;
 
 pub use crate::util::path_to_module;
 
+#[derive(Serialize)]
+pub struct OverviewSymbol {
+    id: i64,
+    name: String,
+    qualified_name: String,
+    kind: String,
+    visibility: String,
+    file_path: String,
+    signature: String,
+    doc_comment: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct OverviewResponse {
+    pub snapshot: crate::db::SnapshotRow,
+    pub readme: Option<String>,
+    pub docs: Vec<crate::db::DocRow>,
+    pub top_level_symbols: Vec<OverviewSymbol>,
+}
+
+#[derive(Serialize)]
+pub struct DiffSymbolEntry {
+    name: String,
+    qualified_name: String,
+    kind: String,
+    visibility: String,
+    file_path: String,
+    signature: String,
+}
+
+#[derive(Serialize)]
+pub struct DiffModifiedEntry {
+    qualified_name: String,
+    kind: String,
+    changes: Vec<String>,
+    from: DiffSigVis,
+    to: DiffSigVis,
+}
+
+#[derive(Serialize)]
+pub struct DiffSigVis {
+    signature: String,
+    visibility: String,
+}
+
+#[derive(Serialize)]
+pub struct DiffSummary {
+    added: usize,
+    removed: usize,
+    modified: usize,
+}
+
+#[derive(Serialize)]
+pub struct DiffResponse {
+    pub from_snapshot: i64,
+    pub to_snapshot: i64,
+    pub added: Vec<DiffSymbolEntry>,
+    pub removed: Vec<DiffSymbolEntry>,
+    pub modified: Vec<DiffModifiedEntry>,
+    pub summary: DiffSummary,
+}
+
+#[derive(Serialize)]
+pub struct DeleteSnapshotResponse {
+    pub deleted: bool,
+    pub gc: crate::db::GcStats,
+}
+
 pub async fn get_overview(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<OverviewResponse>, GitdocError> {
     let snapshot = state.db.get_snapshot(snapshot_id).await?
         .ok_or_else(|| GitdocError::NotFound("snapshot not found".into()))?;
 
@@ -47,42 +115,44 @@ pub async fn get_overview(
         )
         .await
         .unwrap_or_default();
-    let top_level: Vec<_> = symbols
+    let top_level_symbols: Vec<_> = symbols
         .iter()
         .filter(|s| s.parent_id.is_none())
-        .map(|s| serde_json::json!({
-            "name": s.name,
-            "qualified_name": s.qualified_name,
-            "kind": s.kind,
-            "file_path": s.file_path,
-            "signature": s.signature,
-            "doc_comment": s.doc_comment,
-        }))
-        .collect::<Vec<_>>();
+        .map(|s| OverviewSymbol {
+            id: s.id,
+            name: s.name.clone(),
+            qualified_name: s.qualified_name.clone(),
+            kind: s.kind.clone(),
+            visibility: s.visibility.clone(),
+            file_path: s.file_path.clone(),
+            signature: s.signature.clone(),
+            doc_comment: s.doc_comment.clone(),
+        })
+        .collect();
 
-    Ok(Json(serde_json::json!({
-        "snapshot": snapshot,
-        "readme": readme_content,
-        "docs": docs,
-        "top_level_symbols": top_level,
-    })))
+    Ok(Json(OverviewResponse {
+        snapshot,
+        readme: readme_content,
+        docs,
+        top_level_symbols,
+    }))
 }
 
 pub async fn list_docs(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::db::DocRow>>, GitdocError> {
     let docs = state.db.list_docs_for_snapshot(snapshot_id).await?;
-    Ok(Json(serde_json::json!(docs)))
+    Ok(Json(docs))
 }
 
 pub async fn get_doc_content(
     State(state): State<Arc<AppState>>,
     Path((snapshot_id, path)): Path<(i64, String)>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<crate::db::DocContent>, GitdocError> {
     let doc = state.db.get_doc_content(snapshot_id, &path).await?
         .ok_or_else(|| GitdocError::NotFound("doc not found".into()))?;
-    Ok(Json(serde_json::json!(doc)))
+    Ok(Json(doc))
 }
 
 #[derive(Deserialize)]
@@ -95,7 +165,7 @@ pub async fn diff_symbols(
     State(state): State<Arc<AppState>>,
     Path((from_id, to_id)): Path<(i64, i64)>,
     Query(q): Query<DiffQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<DiffResponse>, GitdocError> {
     let include_private = q.include_private.unwrap_or(false);
     let filters = SymbolFilters {
         kind: q.kind.clone(),
@@ -121,27 +191,27 @@ pub async fn diff_symbols(
 
     for sym in &to_symbols {
         if !from_map.contains_key(sym.qualified_name.as_str()) {
-            added.push(serde_json::json!({
-                "name": sym.name,
-                "qualified_name": sym.qualified_name,
-                "kind": sym.kind,
-                "visibility": sym.visibility,
-                "file_path": sym.file_path,
-                "signature": sym.signature,
-            }));
+            added.push(DiffSymbolEntry {
+                name: sym.name.clone(),
+                qualified_name: sym.qualified_name.clone(),
+                kind: sym.kind.clone(),
+                visibility: sym.visibility.clone(),
+                file_path: sym.file_path.clone(),
+                signature: sym.signature.clone(),
+            });
         }
     }
 
     for sym in &from_symbols {
         if !to_map.contains_key(sym.qualified_name.as_str()) {
-            removed.push(serde_json::json!({
-                "name": sym.name,
-                "qualified_name": sym.qualified_name,
-                "kind": sym.kind,
-                "visibility": sym.visibility,
-                "file_path": sym.file_path,
-                "signature": sym.signature,
-            }));
+            removed.push(DiffSymbolEntry {
+                name: sym.name.clone(),
+                qualified_name: sym.qualified_name.clone(),
+                kind: sym.kind.clone(),
+                visibility: sym.visibility.clone(),
+                file_path: sym.file_path.clone(),
+                signature: sym.signature.clone(),
+            });
         }
     }
 
@@ -149,54 +219,53 @@ pub async fn diff_symbols(
         if let Some(from_sym) = from_map.get(sym.qualified_name.as_str()) {
             let mut changes = Vec::new();
             if from_sym.signature != sym.signature {
-                changes.push("signature");
+                changes.push("signature".to_string());
             }
             if from_sym.visibility != sym.visibility {
-                changes.push("visibility");
+                changes.push("visibility".to_string());
             }
             if !changes.is_empty() {
-                modified.push(serde_json::json!({
-                    "qualified_name": sym.qualified_name,
-                    "kind": sym.kind,
-                    "changes": changes,
-                    "from": {
-                        "signature": from_sym.signature,
-                        "visibility": from_sym.visibility,
+                modified.push(DiffModifiedEntry {
+                    qualified_name: sym.qualified_name.clone(),
+                    kind: sym.kind.clone(),
+                    changes,
+                    from: DiffSigVis {
+                        signature: from_sym.signature.clone(),
+                        visibility: from_sym.visibility.clone(),
                     },
-                    "to": {
-                        "signature": sym.signature,
-                        "visibility": sym.visibility,
+                    to: DiffSigVis {
+                        signature: sym.signature.clone(),
+                        visibility: sym.visibility.clone(),
                     },
-                }));
+                });
             }
         }
     }
 
-    Ok(Json(serde_json::json!({
-        "from_snapshot": from_id,
-        "to_snapshot": to_id,
-        "added": added,
-        "removed": removed,
-        "modified": modified,
-        "summary": {
-            "added": added.len(),
-            "removed": removed.len(),
-            "modified": modified.len(),
-        },
-    })))
+    let summary = DiffSummary {
+        added: added.len(),
+        removed: removed.len(),
+        modified: modified.len(),
+    };
+
+    Ok(Json(DiffResponse {
+        from_snapshot: from_id,
+        to_snapshot: to_id,
+        added,
+        removed,
+        modified,
+        summary,
+    }))
 }
 
 pub async fn delete_snapshot(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<DeleteSnapshotResponse>, GitdocError> {
     let existed = state.db.delete_snapshot(snapshot_id).await?;
     if !existed {
         return Err(GitdocError::NotFound("snapshot not found".into()));
     }
-    let gc_stats = state.db.gc_orphans().await?;
-    Ok(Json(serde_json::json!({
-        "deleted": true,
-        "gc": gc_stats,
-    })))
+    let gc = state.db.gc_orphans().await?;
+    Ok(Json(DeleteSnapshotResponse { deleted: true, gc }))
 }

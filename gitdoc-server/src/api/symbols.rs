@@ -2,12 +2,26 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::AppState;
 use crate::db::SymbolFilters;
 use crate::error::GitdocError;
+
+#[derive(Serialize)]
+pub struct SymbolWithChildren {
+    pub symbol: crate::db::SymbolDetail,
+    pub children: Vec<crate::db::SymbolRow>,
+}
+
+#[derive(Serialize)]
+pub struct SnapshotSymbolResponse {
+    pub symbol: crate::db::SymbolDetail,
+    pub children: Vec<crate::db::SymbolRow>,
+    pub referenced_by_count: i64,
+    pub references_count: i64,
+}
 
 #[derive(Deserialize)]
 pub struct SymbolQuery {
@@ -21,7 +35,7 @@ pub async fn list_symbols(
     State(state): State<Arc<AppState>>,
     Path(snapshot_id): Path<i64>,
     Query(q): Query<SymbolQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::db::SymbolRow>>, GitdocError> {
     let filters = SymbolFilters {
         kind: q.kind,
         visibility: q.visibility,
@@ -29,26 +43,23 @@ pub async fn list_symbols(
         include_private: q.include_private.unwrap_or(false),
     };
     let symbols = state.db.list_symbols_for_snapshot(snapshot_id, &filters).await?;
-    Ok(Json(serde_json::json!(symbols)))
+    Ok(Json(symbols))
 }
 
 pub async fn get_symbol(
     State(state): State<Arc<AppState>>,
     Path(symbol_id): Path<i64>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<SymbolWithChildren>, GitdocError> {
     let symbol = state.db.get_symbol_by_id(symbol_id).await?
         .ok_or_else(|| GitdocError::NotFound("symbol not found".into()))?;
     let children = state.db.list_symbol_children(symbol_id).await.unwrap_or_default();
-    Ok(Json(serde_json::json!({
-        "symbol": symbol,
-        "children": children,
-    })))
+    Ok(Json(SymbolWithChildren { symbol, children }))
 }
 
 pub async fn get_snapshot_symbol(
     State(state): State<Arc<AppState>>,
     Path((snapshot_id, symbol_id)): Path<(i64, i64)>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<SnapshotSymbolResponse>, GitdocError> {
     let symbol = state.db.get_symbol_by_id(symbol_id).await?
         .ok_or_else(|| GitdocError::NotFound("symbol not found".into()))?;
     let children = state.db.list_symbol_children(symbol_id).await.unwrap_or_default();
@@ -57,12 +68,12 @@ pub async fn get_snapshot_symbol(
         .count_refs_for_symbol(symbol_id, snapshot_id)
         .await
         .unwrap_or((0, 0));
-    Ok(Json(serde_json::json!({
-        "symbol": symbol,
-        "children": children,
-        "referenced_by_count": referenced_by_count,
-        "references_count": references_count,
-    })))
+    Ok(Json(SnapshotSymbolResponse {
+        symbol,
+        children,
+        referenced_by_count,
+        references_count,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -76,7 +87,7 @@ pub async fn get_symbol_references(
     State(state): State<Arc<AppState>>,
     Path((snapshot_id, symbol_id)): Path<(i64, i64)>,
     Query(q): Query<RefQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::db::RefWithSymbol>>, GitdocError> {
     let direction = q.direction.as_deref().unwrap_or("inbound");
     let limit = q.limit.unwrap_or(20);
     let kind_filter = q.kind.as_deref();
@@ -86,13 +97,13 @@ pub async fn get_symbol_references(
         _ => state.db.get_inbound_refs(symbol_id, snapshot_id, kind_filter, limit).await?,
     };
 
-    Ok(Json(serde_json::json!(refs)))
+    Ok(Json(refs))
 }
 
 pub async fn get_symbol_implementations(
     State(state): State<Arc<AppState>>,
     Path((snapshot_id, symbol_id)): Path<(i64, i64)>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::db::RefWithSymbol>>, GitdocError> {
     let impls = state.db.get_implementations(symbol_id, snapshot_id).await?;
-    Ok(Json(serde_json::json!(impls)))
+    Ok(Json(impls))
 }

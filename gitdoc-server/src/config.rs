@@ -2,6 +2,12 @@ use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchitectMode {
+    Auto,
+    ToolsOnly,
+}
+
 pub struct EmbeddingConfig {
     pub provider: String,
     pub api_key: String,
@@ -22,6 +28,7 @@ pub struct Config {
     pub llm: Option<LlmConfig>,
     pub max_prompt_tokens: usize,
     pub condensation_threshold: usize,
+    pub architect_mode: ArchitectMode,
 }
 
 #[derive(Deserialize, Default)]
@@ -36,6 +43,7 @@ struct FileConfig {
     llm: Option<FileLlmConfig>,
     max_prompt_tokens: Option<usize>,
     condensation_threshold: Option<usize>,
+    architect_mode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -129,6 +137,15 @@ impl Config {
             .or(file_config.condensation_threshold)
             .unwrap_or(6000);
 
+        let architect_mode = match std::env::var("GITDOC_ARCHITECT_MODE")
+            .ok()
+            .or(file_config.architect_mode)
+            .as_deref()
+        {
+            Some("auto") => ArchitectMode::Auto,
+            _ => ArchitectMode::ToolsOnly,
+        };
+
         Self {
             bind_addr,
             database_url,
@@ -140,6 +157,7 @@ impl Config {
             llm,
             max_prompt_tokens,
             condensation_threshold,
+            architect_mode,
         }
     }
 

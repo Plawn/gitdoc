@@ -3,12 +3,35 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::AppState;
 use crate::error::GitdocError;
 use crate::git_ops;
+
+#[derive(Serialize)]
+pub struct CreateRepoResponse {
+    pub id: String,
+}
+
+#[derive(Serialize)]
+pub struct GetRepoResponse {
+    pub repo: crate::db::RepoRow,
+    pub snapshots: Vec<crate::db::SnapshotRow>,
+}
+
+#[derive(Serialize)]
+pub struct FetchRepoResponse {
+    pub fetched: bool,
+    pub repo_id: String,
+}
+
+#[derive(Serialize)]
+pub struct DeleteResponse {
+    pub deleted: bool,
+    pub gc: crate::db::GcStats,
+}
 
 #[derive(Deserialize)]
 pub struct CreateRepoBody {
@@ -20,7 +43,7 @@ pub struct CreateRepoBody {
 pub async fn create_repo(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRepoBody>,
-) -> Result<(StatusCode, Json<serde_json::Value>), GitdocError> {
+) -> Result<(StatusCode, Json<CreateRepoResponse>), GitdocError> {
     if body.id.is_empty() || body.name.is_empty() {
         return Err(GitdocError::BadRequest("id and name must be non-empty".into()));
     }
@@ -44,28 +67,25 @@ pub async fn create_repo(
 
     Ok((
         StatusCode::CREATED,
-        Json(serde_json::json!({ "id": body.id })),
+        Json(CreateRepoResponse { id: body.id }),
     ))
 }
 
 pub async fn list_repos(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::db::RepoRow>>, GitdocError> {
     let repos = state.db.list_repos().await?;
-    Ok(Json(serde_json::json!(repos)))
+    Ok(Json(repos))
 }
 
 pub async fn get_repo(
     State(state): State<Arc<AppState>>,
     Path(repo_id): Path<String>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<GetRepoResponse>, GitdocError> {
     let repo = state.db.get_repo(&repo_id).await?
         .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
     let snapshots = state.db.list_snapshots(&repo_id).await.unwrap_or_default();
-    Ok(Json(serde_json::json!({
-        "repo": repo,
-        "snapshots": snapshots,
-    })))
+    Ok(Json(GetRepoResponse { repo, snapshots }))
 }
 
 #[derive(Deserialize)]
@@ -85,7 +105,7 @@ pub async fn index_repo(
     State(state): State<Arc<AppState>>,
     Path(repo_id): Path<String>,
     Json(body): Json<IndexBody>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<crate::indexer::pipeline::IndexResult>, GitdocError> {
     let repo = state.db.get_repo(&repo_id).await?
         .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
 
@@ -117,13 +137,13 @@ pub async fn index_repo(
     )
     .await?;
 
-    Ok(Json(serde_json::json!(result)))
+    Ok(Json(result))
 }
 
 pub async fn fetch_repo(
     State(state): State<Arc<AppState>>,
     Path(repo_id): Path<String>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<FetchRepoResponse>, GitdocError> {
     let repo = state.db.get_repo(&repo_id).await?
         .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
 
@@ -131,13 +151,13 @@ pub async fn fetch_repo(
         .await
         .map_err(|e| GitdocError::BadRequest(format!("fetch failed: {e}")))?;
 
-    Ok(Json(serde_json::json!({ "fetched": true, "repo_id": repo_id })))
+    Ok(Json(FetchRepoResponse { fetched: true, repo_id }))
 }
 
 pub async fn delete_repo(
     State(state): State<Arc<AppState>>,
     Path(repo_id): Path<String>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<DeleteResponse>, GitdocError> {
     // Look up repo before deleting to check if it has a URL (cloned dir to clean up)
     let repo = state.db.get_repo(&repo_id).await?;
 
@@ -151,9 +171,6 @@ pub async fn delete_repo(
         let _ = tokio::fs::remove_dir_all(&repo.path).await;
     }
 
-    let gc_stats = state.db.gc_orphans().await?;
-    Ok(Json(serde_json::json!({
-        "deleted": true,
-        "gc": gc_stats,
-    })))
+    let gc = state.db.gc_orphans().await?;
+    Ok(Json(DeleteResponse { deleted: true, gc }))
 }

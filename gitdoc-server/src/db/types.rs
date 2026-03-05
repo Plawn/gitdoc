@@ -286,6 +286,107 @@ pub struct CheatsheetPatchMeta {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+// --- Architect types ---
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct LibProfileRow {
+    pub id: String,
+    pub name: String,
+    pub repo_id: Option<String>,
+    pub category: String,
+    pub version_hint: String,
+    pub profile: String,
+    pub source: String,
+    pub model: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct LibProfileSummary {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub version_hint: String,
+    pub source: String,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct StackRuleRow {
+    pub id: i64,
+    pub rule_type: String,
+    pub subject: String,
+    pub content: String,
+    pub lib_profile_id: Option<String>,
+    pub priority: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ArchitectSearchResult {
+    pub id: String,
+    pub kind: String,
+    pub text: String,
+    pub score: f64,
+}
+
+// --- Project Profile types ---
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ProjectProfileRow {
+    pub id: String,
+    pub repo_id: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub stack: serde_json::Value,
+    pub constraints: String,
+    pub code_style: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ProjectProfileSummary {
+    pub id: String,
+    pub name: String,
+    pub repo_id: Option<String>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+// --- Architecture Decision types ---
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ArchDecisionRow {
+    pub id: i64,
+    pub project_profile_id: Option<String>,
+    pub title: String,
+    pub context: String,
+    pub choice: String,
+    pub alternatives: String,
+    pub reasoning: String,
+    pub outcome: Option<String>,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+// --- Architecture Pattern types ---
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ArchPatternRow {
+    pub id: i64,
+    pub name: String,
+    pub category: String,
+    pub description: String,
+    pub libs_involved: Vec<String>,
+    pub pattern_text: String,
+    pub source: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 // --- Conversation types ---
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]

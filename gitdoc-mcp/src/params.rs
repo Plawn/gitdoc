@@ -279,6 +279,215 @@ pub struct UpdateCheatsheetParams {
     pub reference: Option<String>,
 }
 
+// --- Architect params ---
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListLibProfilesParams {
+    /// Filter by category (e.g. "web-framework", "database")
+    pub category: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetLibProfileParams {
+    /// The lib profile ID (e.g. "axum", "tokio")
+    pub id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct IngestLibParams {
+    /// Unique ID for the library (e.g. "axum")
+    pub id: String,
+    /// Human-readable name (e.g. "Axum")
+    pub name: String,
+    /// Git clone URL (e.g. "https://github.com/tokio-rs/axum.git")
+    pub git_url: String,
+    /// Library category (e.g. "web-framework", "database")
+    pub category: Option<String>,
+    /// Version hint (e.g. "0.7", "1.x")
+    pub version_hint: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ImportLibProfileParams {
+    /// Unique ID for the library
+    pub id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Library category
+    pub category: Option<String>,
+    /// Version hint
+    pub version_hint: Option<String>,
+    /// The profile text (markdown)
+    pub profile: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GenerateLibProfileParams {
+    /// The lib profile ID to generate/regenerate
+    pub id: String,
+    /// The repo ID of the already-indexed repository
+    pub repo_id: String,
+    /// Specific snapshot ID (omit to use latest)
+    pub snapshot_id: Option<i64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DeleteLibProfileParams {
+    /// The lib profile ID to delete
+    pub id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct AddStackRuleParams {
+    /// Rule type (e.g. "prefer", "avoid", "guideline", "constraint")
+    pub rule_type: String,
+    /// Subject area (e.g. "HTTP framework", "database", "serialization")
+    pub subject: String,
+    /// Rule content — the actual recommendation or constraint
+    pub content: String,
+    /// Optional reference to a lib profile ID
+    pub lib_profile_id: Option<String>,
+    /// Priority (higher = more important, default: 0)
+    pub priority: Option<i32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListStackRulesParams {
+    /// Filter by rule type
+    pub rule_type: Option<String>,
+    /// Filter by subject
+    pub subject: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DeleteStackRuleParams {
+    /// The stack rule ID to delete
+    pub id: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ArchitectAdviseParams {
+    /// Natural language question about technology choices or architecture
+    pub question: String,
+    /// Maximum number of relevant items to consider (default: 5)
+    pub limit: Option<i64>,
+}
+
+// --- Project Profile params ---
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateProjectProfileParams {
+    /// Unique project ID (e.g. "my-api", "frontend-app")
+    pub id: String,
+    /// Optional repo ID to link the project to an indexed repository
+    pub repo_id: Option<String>,
+    /// Human-readable project name
+    pub name: String,
+    /// Project description
+    pub description: Option<String>,
+    /// Technology stack as JSON array: [{"lib": "axum", "role": "HTTP framework", "why": "..."}]
+    pub stack: Option<serde_json::Value>,
+    /// Technical constraints (e.g. "must support WASM", "no unsafe code")
+    pub constraints: Option<String>,
+    /// Code style preferences (e.g. "builder pattern for config", "anyhow for errors")
+    pub code_style: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetProjectProfileParams {
+    /// The project profile ID
+    pub id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListProjectProfilesParams {}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DeleteProjectProfileParams {
+    /// The project profile ID to delete
+    pub id: String,
+}
+
+// --- Decision params ---
+
+#[derive(Deserialize, JsonSchema)]
+pub struct RecordDecisionParams {
+    /// Title of the decision (e.g. "Use Axum for HTTP layer")
+    pub title: String,
+    /// Context: what problem this decision addresses
+    pub context: Option<String>,
+    /// The choice that was made
+    pub choice: String,
+    /// Alternatives that were considered
+    pub alternatives: Option<String>,
+    /// Reasoning behind the choice
+    pub reasoning: Option<String>,
+    /// Optional project profile ID to associate this decision with
+    pub project_profile_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListDecisionsParams {
+    /// Filter by project profile ID
+    pub project_profile_id: Option<String>,
+    /// Filter by status: "active", "superseded", or "reverted"
+    pub status: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateDecisionParams {
+    /// The decision ID to update
+    pub id: i64,
+    /// Outcome description (what actually happened)
+    pub outcome: Option<String>,
+    /// New status: "active", "superseded", or "reverted"
+    pub status: Option<String>,
+}
+
+// --- Compare params ---
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CompareLibsParams {
+    /// List of library profile IDs to compare (e.g. ["axum", "actix-web"])
+    pub lib_ids: Vec<String>,
+    /// Criteria for comparison (e.g. "building a REST API with WebSocket support")
+    pub criteria: String,
+}
+
+// --- Pattern params ---
+
+#[derive(Deserialize, JsonSchema)]
+pub struct AddPatternParams {
+    /// Pattern name (e.g. "JWT auth with axum + tower")
+    pub name: String,
+    /// Category (e.g. "authentication", "error-handling", "database")
+    pub category: Option<String>,
+    /// Brief description of the pattern
+    pub description: Option<String>,
+    /// Library IDs involved in this pattern
+    pub libs_involved: Option<Vec<String>>,
+    /// The pattern content: code examples, steps, best practices
+    pub pattern_text: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListPatternsParams {
+    /// Filter by category
+    pub category: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetPatternParams {
+    /// The pattern ID
+    pub id: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DeletePatternParams {
+    /// The pattern ID to delete
+    pub id: i64,
+}
+
 #[derive(Deserialize, JsonSchema)]
 pub struct SemanticSearchParams {
     /// The repo ID

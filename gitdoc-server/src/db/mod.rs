@@ -9,6 +9,7 @@ mod summaries;
 mod conversations;
 mod gc;
 mod cheatsheets;
+mod architect;
 pub mod types;
 
 pub use types::*;

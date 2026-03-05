@@ -59,6 +59,7 @@ pub async fn generate_cheatsheet_handler(
         Some(req.snapshot_id),
         trigger,
         None,
+        state.embedder.as_deref(),
     )
     .await
     .map_err(GitdocError::Internal)?;
@@ -102,7 +103,7 @@ pub async fn list_patches_handler(
     State(state): State<Arc<AppState>>,
     Path(repo_id): Path<String>,
     Query(q): Query<PatchListQuery>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<Vec<crate::db::CheatsheetPatchMeta>>, GitdocError> {
     let limit = q.limit.unwrap_or(20);
     let offset = q.offset.unwrap_or(0);
 
@@ -111,21 +112,21 @@ pub async fn list_patches_handler(
         .list_cheatsheet_patches(&repo_id, limit, offset)
         .await?;
 
-    Ok(Json(serde_json::to_value(&patches).unwrap_or_default()))
+    Ok(Json(patches))
 }
 
 /// GET /repos/{repo_id}/cheatsheet/patches/{patch_id} — get full patch
 pub async fn get_patch_handler(
     State(state): State<Arc<AppState>>,
     Path((repo_id, patch_id)): Path<(String, i64)>,
-) -> Result<Json<serde_json::Value>, GitdocError> {
+) -> Result<Json<crate::db::CheatsheetPatchRow>, GitdocError> {
     let patch = state
         .db
         .get_cheatsheet_patch(&repo_id, patch_id)
         .await?
         .ok_or_else(|| GitdocError::NotFound(format!("patch {patch_id} not found for repo '{repo_id}'")))?;
 
-    Ok(Json(serde_json::to_value(&patch).unwrap_or_default()))
+    Ok(Json(patch))
 }
 
 #[derive(Deserialize)]
@@ -148,6 +149,7 @@ pub async fn stream_generate_cheatsheet_handler(
     let trigger = req.trigger.unwrap_or_else(|| "auto".into());
     let snapshot_id = req.snapshot_id;
     let db = state.db.clone();
+    let embedder = state.embedder.clone();
 
     tokio::spawn(async move {
         let send_event = |stage: &str, message: &str, patch_id: Option<i64>| {
@@ -167,6 +169,7 @@ pub async fn stream_generate_cheatsheet_handler(
             Some(snapshot_id),
             &trigger,
             None,
+            embedder.as_deref(),
         ).await {
             Ok(patch_id) => {
                 let _ = tx.send(Ok(send_event("generating", "Calling LLM...", None))).await;
