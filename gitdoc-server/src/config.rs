@@ -20,6 +20,8 @@ pub struct Config {
     pub exclusion_patterns: Vec<String>,
     pub embedding: Option<EmbeddingConfig>,
     pub llm: Option<LlmConfig>,
+    pub max_prompt_tokens: usize,
+    pub condensation_threshold: usize,
 }
 
 #[derive(Deserialize, Default)]
@@ -32,6 +34,8 @@ struct FileConfig {
     repos_dir: Option<String>,
     embedding: Option<FileEmbeddingConfig>,
     llm: Option<FileLlmConfig>,
+    max_prompt_tokens: Option<usize>,
+    condensation_threshold: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +117,18 @@ impl Config {
         let embedding = Self::resolve_embedding(&file_config.embedding);
         let llm = Self::resolve_llm(&file_config.llm);
 
+        let max_prompt_tokens = std::env::var("GITDOC_MAX_PROMPT_TOKENS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .or(file_config.max_prompt_tokens)
+            .unwrap_or(12000);
+
+        let condensation_threshold = std::env::var("GITDOC_CONDENSATION_THRESHOLD")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .or(file_config.condensation_threshold)
+            .unwrap_or(6000);
+
         Self {
             bind_addr,
             database_url,
@@ -122,6 +138,8 @@ impl Config {
             exclusion_patterns,
             embedding,
             llm,
+            max_prompt_tokens,
+            condensation_threshold,
         }
     }
 

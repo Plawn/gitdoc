@@ -4,13 +4,15 @@ use rmcp::{
     handler::server::router::tool::ToolRouter,
     handler::server::tool::Parameters,
     model::*,
+    service::{Peer, RequestContext, RoleServer},
     tool, tool_router, tool_handler,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::client::GitdocClient;
+use crate::config::McpMode;
 use crate::params::*;
 use crate::snapshot_resolver::resolve_snapshot;
 
@@ -22,6 +24,8 @@ pub struct GitdocMcpServer {
     tool_router: ToolRouter<Self>,
     client: Arc<GitdocClient>,
     conversations: ConversationMap,
+    mode: McpMode,
+    peer: Arc<RwLock<Option<Peer<RoleServer>>>>,
 }
 
 fn text_result(text: String) -> Result<CallToolResult, McpError> {
@@ -34,12 +38,57 @@ fn err_result(msg: String) -> Result<CallToolResult, McpError> {
 
 #[tool_router]
 impl GitdocMcpServer {
-    pub fn new(client: GitdocClient) -> Self {
+    pub fn new(client: GitdocClient, mode: McpMode) -> Self {
         Self {
             tool_router: Self::tool_router(),
             client: Arc::new(client),
             conversations: Arc::new(Mutex::new(HashMap::new())),
+            mode,
+            peer: Arc::new(RwLock::new(None)),
         }
+    }
+
+    async fn log_info(&self, message: &str) {
+        if let Some(peer) = self.peer.read().await.as_ref() {
+            let _ = peer.notify_logging_message(LoggingMessageNotificationParam {
+                level: LoggingLevel::Info,
+                logger: Some("gitdoc".into()),
+                data: serde_json::Value::String(message.to_string()),
+            }).await;
+        }
+    }
+
+    async fn auto_generate_cheatsheet(&self, repo_id: &str, snapshot_id: i64) {
+        self.log_info("Auto-generating repo cheatsheet...").await;
+
+        match self.client.stream_generate_cheatsheet(repo_id, snapshot_id, "auto").await {
+            Ok(mut rx) => {
+                while let Some(event) = rx.recv().await {
+                    let msg = match event.stage.as_str() {
+                        "gathering" => format!("Cheatsheet: {}", event.message),
+                        "generating" => format!("Cheatsheet: {}", event.message),
+                        "done" => "Cheatsheet ready".to_string(),
+                        "error" => format!("Cheatsheet generation failed: {}", event.message),
+                        _ => event.message.clone(),
+                    };
+                    self.log_info(&msg).await;
+                }
+            }
+            Err(e) => {
+                self.log_info(&format!("Cheatsheet generation skipped: {e}")).await;
+            }
+        }
+    }
+
+    /// Returns an error if the current mode is Simple — used to guard granular-only tools.
+    fn check_granular(&self) -> Result<(), McpError> {
+        if self.mode == McpMode::Simple {
+            return Err(McpError::invalid_request(
+                "This tool is not available in simple mode. Use GITDOC_MCP_MODE=granular to enable all tools.",
+                None,
+            ));
+        }
+        Ok(())
     }
 
     #[tool(description = "Check if the GitDoc server is reachable. Returns 'pong' on success. Call this first if other tools return connection errors.")]
@@ -76,6 +125,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<FetchRepoParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         match self.client.fetch_repo(&p.repo_id).await {
             Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
@@ -117,6 +167,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<RepoRefParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -133,6 +184,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<ReadDocParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -149,6 +201,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<ListSymbolsParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -169,6 +222,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetSymbolParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         match self.client.get_symbol(params.0.symbol_id).await {
             Ok(detail) => text_result(serde_json::to_string_pretty(&detail).unwrap()),
             Err(e) => err_result(format!("error: {e}")),
@@ -180,6 +234,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<FindReferencesParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -200,6 +255,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetDependenciesParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -220,6 +276,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetImplementationsParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -236,6 +293,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<DiffSymbolsParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let from_id = match resolve_snapshot(&self.client, &p.repo_id, p.from_ref.as_deref()).await {
             Ok(id) => id,
@@ -256,6 +314,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<SearchDocsParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -272,6 +331,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<SearchSymbolsParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -288,6 +348,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetPublicApiParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -304,6 +365,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetModuleTreeParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -320,6 +382,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetTypeContextParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -336,6 +399,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetExamplesParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -352,6 +416,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<SummarizeParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -368,6 +433,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetSummaryParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -384,6 +450,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<ExplainParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -400,6 +467,7 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<SemanticSearchParams>,
     ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
         let p = params.0;
         let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
             Ok(id) => id,
@@ -421,6 +489,17 @@ impl GitdocMcpServer {
             Ok(id) => id,
             Err(e) => return err_result(format!("error resolving snapshot: {e}")),
         };
+
+        // Auto-generate cheatsheet if missing
+        match self.client.get_cheatsheet(&p.repo_id).await {
+            Ok(cs) if cs.get("content").and_then(|v| v.as_str()).map_or(true, |s| s.is_empty()) => {
+                self.auto_generate_cheatsheet(&p.repo_id, snapshot_id).await;
+            }
+            Err(_) => {
+                self.auto_generate_cheatsheet(&p.repo_id, snapshot_id).await;
+            }
+            _ => {} // cheatsheet exists
+        }
 
         // Look up or create conversation for this repo
         let conversation_id = {
@@ -452,6 +531,36 @@ impl GitdocMcpServer {
                 }
                 text_result(output)
             }
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Get the persistent repo cheatsheet — a structured summary of architecture, key types, patterns, and gotchas accumulated over time. Returns the current cheatsheet content. If no cheatsheet exists yet, use update_cheatsheet to generate one.")]
+    async fn get_cheatsheet(
+        &self,
+        params: Parameters<GetCheatsheetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        match self.client.get_cheatsheet(&p.repo_id).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Generate or regenerate the persistent repo cheatsheet. This triggers LLM generation (costs tokens) based on the repo's module tree, public API, README, and existing summaries. The cheatsheet is automatically injected into 'ask' conversations to provide context. Use this after initial indexing or when the repo has changed significantly.")]
+    async fn update_cheatsheet(
+        &self,
+        params: Parameters<UpdateCheatsheetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.check_granular()?;
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+        match self.client.generate_cheatsheet(&p.repo_id, snapshot_id, Some("manual")).await {
+            Ok(result) => text_result(serde_json::to_string_pretty(&result).unwrap()),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -488,13 +597,74 @@ impl GitdocMcpServer {
 #[tool_handler]
 impl ServerHandler for GitdocMcpServer {
     fn get_info(&self) -> ServerInfo {
+        let instructions = match self.mode {
+            McpMode::Simple => SIMPLE_INSTRUCTIONS,
+            McpMode::Granular => GRANULAR_INSTRUCTIONS,
+        };
         ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_logging()
+                .build(),
             server_info: Implementation {
                 name: "gitdoc-mcp".into(),
                 version: env!("CARGO_PKG_VERSION").into(),
             },
-            instructions: Some(r#"# GitDoc MCP — Code Intelligence for LLM Agents
+            instructions: Some(instructions.into()),
+            ..Default::default()
+        }
+    }
+
+    async fn initialize(
+        &self,
+        request: InitializeRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, McpError> {
+        if context.peer.peer_info().is_none() {
+            context.peer.set_peer_info(request);
+        }
+        *self.peer.write().await = Some(context.peer);
+        Ok(self.get_info())
+    }
+}
+
+const SIMPLE_INSTRUCTIONS: &str = r#"# GitDoc MCP — Code Intelligence (Simple Mode)
+
+GitDoc indexes git repositories and lets you ask natural language questions about their code, docs, and architecture.
+
+## Quick Start
+
+1. `list_repos` → check if the repo is already registered
+2. If not: `register_repo(id: "mylib", name: "My Lib", url: "https://github.com/...")` → server clones it
+3. `index_repo(repo_id: "mylib")` → creates a searchable snapshot. **Required before querying.**
+4. `ask(repo_id: "mylib", question: "What does this crate do?")` → get answers with sources
+
+## Workflow
+
+- **`ask`** is the main tool — ask any question and get an LLM-synthesized answer with source references
+- Follow-up questions keep conversation context: `ask(repo_id: "mylib", question: "How does error handling work?")`
+- Use `conversation_reset` when switching to an unrelated topic
+- Use `get_repo_overview` for a quick snapshot of README + structure
+
+## Tools Available
+
+| Tool | Purpose |
+|------|---------|
+| `ping` | Health check |
+| `list_repos` | Discover registered repos |
+| `register_repo` | Add a new repo (server clones it) |
+| `index_repo` | Create a snapshot (required before querying) |
+| `get_repo_overview` | README + doc listing + top symbols |
+| `ask` | Ask questions — conversational, context-aware |
+| `conversation_reset` | Clear conversation when switching topics |
+
+## Tips
+
+- Do NOT clone repos yourself — just pass the URL to `register_repo`
+- Set `fetch=true` on `index_repo` to pull latest changes before indexing
+- If `ask` returns errors about embeddings, ensure the server has COHERE_KEY or OPENAI_API_KEY configured"#;
+
+const GRANULAR_INSTRUCTIONS: &str = r#"# GitDoc MCP — Code Intelligence for LLM Agents
 
 GitDoc indexes git repositories and exposes their documentation, code symbols, and cross-references as structured data. You NEVER read raw source files — instead, you navigate through extracted symbols, docs, and a dependency graph.
 
@@ -572,11 +742,17 @@ IMPORTANT: Do NOT clone repositories yourself. The server handles all git clonin
 | `summarize` | **Generate** an LLM summary (costs tokens) | Generated summary for crate/module/type |
 | `get_summary` | **Retrieve** a previously generated summary | Cached summary or list of available summaries |
 
+### Cheatsheet (persistent repo knowledge)
+| Tool | When to use | Returns |
+|------|-------------|---------|
+| `get_cheatsheet` | **Read the repo cheatsheet** — architecture, key types, patterns, gotchas | Current cheatsheet content |
+| `update_cheatsheet` | **Generate/regenerate** the cheatsheet (costs LLM tokens) | Generated cheatsheet with patch ID |
+
 ### Conversational Mode (RECOMMENDED — fewest tool calls)
 | Tool | When to use | Returns |
 |------|-------------|---------|
-| `ask` | **Ask any question about the codebase** — maintains conversation context across calls | LLM-synthesized answer with source references |
-| `conversation_reset` | Clear conversation history for a repo to start fresh | Confirmation message |
+| `ask` | **Ask any question about the codebase** — maintains conversation context across calls, auto-injects cheatsheet | LLM-synthesized answer with source references |
+| `conversation_reset` | Clear conversation history for a repo to start fresh (auto-updates cheatsheet with learnings) | Confirmation message |
 
 ### Maintenance
 | Tool | When to use |
@@ -619,8 +795,4 @@ Valid values for the `kind` filter: function, struct, class, trait, interface, e
 
 ## Reference Kinds
 
-Valid values for the `kind` filter on find_references/get_dependencies: calls, type_ref, implements, imports."#.into()),
-            ..Default::default()
-        }
-    }
-}
+Valid values for the `kind` filter on find_references/get_dependencies: calls, type_ref, implements, imports."#;

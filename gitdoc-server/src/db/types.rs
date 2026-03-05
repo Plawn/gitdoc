@@ -250,6 +250,42 @@ pub struct ModuleSymbol {
     pub parent_id: Option<i64>,
 }
 
+// --- Cheatsheet types ---
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct CheatsheetRow {
+    pub repo_id: String,
+    pub content: String,
+    pub snapshot_id: Option<i64>,
+    pub model: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct CheatsheetPatchRow {
+    pub id: i64,
+    pub repo_id: String,
+    pub snapshot_id: Option<i64>,
+    pub prev_content: String,
+    pub new_content: String,
+    pub change_summary: String,
+    pub trigger: String,
+    pub model: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct CheatsheetPatchMeta {
+    pub id: i64,
+    pub repo_id: String,
+    pub snapshot_id: Option<i64>,
+    pub change_summary: String,
+    pub trigger: String,
+    pub model: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
 // --- Conversation types ---
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
@@ -258,6 +294,7 @@ pub struct ConversationRow {
     pub snapshot_id: i64,
     pub condensed_context: String,
     pub raw_turn_tokens: i32,
+    pub condensed_up_to: i32,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }

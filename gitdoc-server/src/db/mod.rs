@@ -8,6 +8,7 @@ mod embeddings;
 mod summaries;
 mod conversations;
 mod gc;
+mod cheatsheets;
 pub mod types;
 
 pub use types::*;

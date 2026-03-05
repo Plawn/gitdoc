@@ -33,7 +33,9 @@ Multiple agents share the same indexed data without re-indexing.
 - **Full-text search** — Tantivy indexes over docs and symbols
 - **Semantic search** — pgvector cosine similarity via Cohere or OpenAI embeddings
 - **File deduplication** — SHA-256 content addressing; unchanged files across commits share all parsed data
-- **14 MCP tools** — everything an agent needs to understand a codebase without reading raw files
+- **Persistent repo cheatsheets** — LLM-generated architecture/types/patterns summaries that accumulate knowledge across sessions
+- **Conversational mode** — multi-turn Q&A with context persistence; cheatsheet auto-injected into prompts
+- **Two MCP modes** — simple (7 tools, conversational) for coding agents; granular (21 tools) for fine-grained control
 
 ### Supported Languages
 
@@ -83,6 +85,8 @@ cargo run --bin gitdoc-server
 GITDOC_SERVER_URL=http://127.0.0.1:3000 cargo run --bin gitdoc-mcp
 ```
 
+By default the MCP server starts in **simple mode** (7 tools, conversational). Set `GITDOC_MCP_MODE=granular` for all 21 tools.
+
 Or add it to your Claude Code MCP config:
 
 ```json
@@ -100,6 +104,24 @@ Or add it to your Claude Code MCP config:
 }
 ```
 
+For granular mode (all tools):
+
+```json
+{
+  "mcpServers": {
+    "gitdoc": {
+      "command": "cargo",
+      "args": ["run", "--bin", "gitdoc-mcp"],
+      "cwd": "/path/to/gitdoc",
+      "env": {
+        "GITDOC_SERVER_URL": "http://127.0.0.1:3000",
+        "GITDOC_MCP_MODE": "granular"
+      }
+    }
+  }
+}
+```
+
 ## Configuration
 
 ### gitdoc-server
@@ -111,15 +133,68 @@ Or add it to your Claude Code MCP config:
 | `GITDOC_INDEX_PATH` | `./gitdoc_index` | Directory for Tantivy full-text indexes |
 | `COHERE_KEY` | — | Cohere API key (`embed-v4.0`, 1024-dim) |
 | `OPENAI_API_KEY` | — | OpenAI API key (`text-embedding-3-small`, 1536-dim) |
+| `GITDOC_LLM_ENDPOINT` | — | LLM API endpoint URL (see LLM setup below) |
+| `GITDOC_LLM_KEY` | — | API key for the LLM endpoint |
+| `GITDOC_LLM_MODEL` | — | Model/deployment name |
+| `GITDOC_LLM_KIND` | `azure` | Engine kind: `azure`, `azure_inference`, or `ollama` |
+| `GITDOC_MAX_PROMPT_TOKENS` | `12000` | Total token budget for conversation prompts |
+| `GITDOC_CONDENSATION_THRESHOLD` | `6000` | Trigger history condensation after this many raw turn tokens |
 | `RUST_LOG` | `info` | Tracing filter directive |
 
-If neither embedding key is set, semantic search returns `503 Service Unavailable`. When both are set, Cohere takes precedence.
+If neither embedding key is set, semantic search returns `503 Service Unavailable`. When both are set, Cohere takes precedence. If no LLM endpoint is set, summaries, cheatsheets, and conversational mode are unavailable.
+
+### LLM Setup
+
+The LLM powers summaries, cheatsheets (auto-generated on first `ask`), and conversational Q&A. GitDoc supports three engine kinds:
+
+#### Azure OpenAI
+
+```sh
+GITDOC_LLM_KIND=azure
+GITDOC_LLM_ENDPOINT=https://your-resource.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-02-01
+GITDOC_LLM_KEY=your-azure-api-key
+GITDOC_LLM_MODEL=gpt-4o
+```
+
+#### Azure AI Inference (GitHub Models, Azure AI Studio)
+
+```sh
+GITDOC_LLM_KIND=azure_inference
+GITDOC_LLM_ENDPOINT=https://models.inference.ai.azure.com/chat/completions
+GITDOC_LLM_KEY=your-github-token-or-azure-key
+GITDOC_LLM_MODEL=gpt-4o
+```
+
+#### Ollama (local)
+
+```sh
+GITDOC_LLM_KIND=ollama
+GITDOC_LLM_ENDPOINT=http://localhost:11434/v1/chat/completions
+GITDOC_LLM_MODEL=llama3.1
+```
+
+No API key needed for Ollama — just ensure the server is running (`ollama serve`).
+
+#### TOML config alternative
+
+Instead of environment variables, you can configure the LLM in `gitdoc.toml`:
+
+```toml
+[llm]
+kind = "ollama"
+endpoint = "http://localhost:11434/v1/chat/completions"
+model = "llama3.1"
+# key = "..." # optional, depending on provider
+```
+
+Environment variables take precedence over TOML values. See [`gitdoc.example.toml`](gitdoc.example.toml) for a complete example.
 
 ### gitdoc-mcp
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
 | `GITDOC_SERVER_URL` | `http://127.0.0.1:3000` | URL of the gitdoc-server instance |
+| `GITDOC_MCP_MODE` | `simple` | Tool mode: `simple` (7 conversational tools) or `granular` (all 21 tools) |
 
 ## API Reference
 
@@ -132,6 +207,23 @@ GET  /repos/:repo_id                Get repo with its snapshots
 POST /repos/:repo_id/index          Trigger indexing  { commit?, label?, fetch? }
 POST /repos/:repo_id/fetch          Pull latest remote changes
 DELETE /repos/:repo_id              Delete repo and clean up
+```
+
+### Cheatsheets
+
+```
+POST /repos/:repo_id/cheatsheet                  Generate/update cheatsheet  { snapshot_id, trigger? }
+POST /repos/:repo_id/cheatsheet/stream            Generate with SSE progress  { snapshot_id, trigger? }
+GET  /repos/:repo_id/cheatsheet                   Get current cheatsheet
+GET  /repos/:repo_id/cheatsheet/patches            List patch history  ?limit=&offset=
+GET  /repos/:repo_id/cheatsheet/patches/:patch_id  Get full patch (prev + new content)
+```
+
+The `/stream` endpoint returns Server-Sent Events with JSON payloads:
+```
+data: {"stage":"gathering","message":"Loading repo structure..."}
+data: {"stage":"generating","message":"Calling LLM..."}
+data: {"stage":"done","patch_id":5,"message":"Cheatsheet generated"}
 ```
 
 ### Snapshot Navigation
@@ -149,6 +241,13 @@ GET  /snapshots/:id/symbols/:sym_id Symbol detail with children and ref counts
 ```
 GET  /snapshots/:id/symbols/:sym_id/references        ?direction=inbound|outbound&kind=&limit=
 GET  /snapshots/:id/symbols/:sym_id/implementations
+```
+
+### Conversations
+
+```
+POST   /snapshots/:id/converse                          Multi-turn Q&A  { q, conversation_id?, limit? }
+DELETE /snapshots/:id/conversations/:conversation_id    Delete conversation (auto-updates cheatsheet)
 ```
 
 ### Diff
@@ -175,46 +274,79 @@ GET  /health    → "ok"
 
 ## MCP Tools
 
-The MCP server exposes 19 tools to LLM agents. Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most recent snapshot is used.
+The MCP server supports two modes, selected via `GITDOC_MCP_MODE`:
 
-### Setup & Discovery
+- **Simple mode** (default) — 7 tools centered around conversational `ask`. Best for coding agents like Claude Code that benefit from fewer, high-level tools.
+- **Granular mode** — all 21 tools for fine-grained control over docs, symbols, references, and search.
+
+Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most recent snapshot is used.
+
+### Simple Mode Tools (7)
+
 | Tool | Description |
 |------|-------------|
 | `ping` | Health check — verify server is reachable |
 | `list_repos` | List all registered repos with IDs, names, paths |
-| `register_repo` | Register a repo (`url` for remote, `path` for local) |
-| `fetch_repo` | Pull latest changes for a URL-cloned repo |
+| `register_repo` | Register a repo by clone URL |
 | `index_repo` | Create a snapshot at a commit (**required** before querying) |
+| `get_repo_overview` | README + doc tree + top-level public symbols (start here) |
+| `ask` | Multi-turn Q&A — maintains context across calls, auto-generates and injects cheatsheet |
+| `conversation_reset` | Clear conversation history (auto-updates cheatsheet with learnings) |
 
-### Browsing
+### Additional Granular Mode Tools (+14)
+
+#### Setup
 | Tool | Description |
 |------|-------------|
-| `get_repo_overview` | README + doc tree + top-level public symbols (start here) |
+| `fetch_repo` | Pull latest changes for a URL-cloned repo |
+
+#### Browsing
+| Tool | Description |
+|------|-------------|
 | `list_docs` | List markdown/text files in a snapshot |
 | `read_doc` | Read full content of a doc file |
 | `list_symbols` | List code symbols with filters (kind, file_path, include_private) |
 | `get_symbol` | Full symbol detail: signature, source body, children |
 
-### Code Navigation
+#### High-Level Views
+| Tool | Description |
+|------|-------------|
+| `get_module_tree` | Hierarchical module tree with doc comments and item counts |
+| `get_public_api` | Complete public API surface grouped by module |
+| `get_type_context` | Full type detail: definition + methods + traits + implementors + callers |
+| `get_examples` | Code examples extracted from doc comments |
+
+#### Code Navigation
 | Tool | Description |
 |------|-------------|
 | `find_references` | Inbound references — "who calls/uses this?" |
 | `get_dependencies` | Outbound references — "what does this call/use?" |
 | `get_implementations` | Trait/interface implementations (bidirectional) |
 
-### Search
+#### Search
 | Tool | Description |
 |------|-------------|
 | `search_docs` | Full-text keyword search over documentation |
 | `search_symbols` | Full-text search over symbol names, signatures, doc comments |
 | `semantic_search` | Natural language search via embedding similarity |
+| `explain` | Semantic search + type context assembly, optional LLM synthesis |
 
-### Maintenance
+#### LLM Summaries
+| Tool | Description |
+|------|-------------|
+| `summarize` | Generate an LLM summary for a crate/module/type |
+| `get_summary` | Retrieve a previously generated summary |
+
+#### Cheatsheet
+| Tool | Description |
+|------|-------------|
+| `get_cheatsheet` | Read the persistent repo cheatsheet (architecture, key types, patterns, gotchas) |
+| `update_cheatsheet` | Generate or regenerate the cheatsheet (LLM-powered) |
+
+#### Maintenance
 | Tool | Description |
 |------|-------------|
 | `diff_symbols` | Compare symbols between two snapshots (added/removed/modified) |
-| `delete_snapshot` | Remove a snapshot and GC orphaned data |
-| `gc` | Manually run garbage collection |
 
 ## Indexing Pipeline
 

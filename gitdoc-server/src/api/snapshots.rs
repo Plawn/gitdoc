@@ -47,7 +47,18 @@ pub async fn get_overview(
         )
         .await
         .unwrap_or_default();
-    let top_level: Vec<_> = symbols.iter().filter(|s| s.parent_id.is_none()).collect();
+    let top_level: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.parent_id.is_none())
+        .map(|s| serde_json::json!({
+            "name": s.name,
+            "qualified_name": s.qualified_name,
+            "kind": s.kind,
+            "file_path": s.file_path,
+            "signature": s.signature,
+            "doc_comment": s.doc_comment,
+        }))
+        .collect::<Vec<_>>();
 
     Ok(Json(serde_json::json!({
         "snapshot": snapshot,

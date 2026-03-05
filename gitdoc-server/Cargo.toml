@@ -51,6 +51,7 @@ toml = "0.8"
 llm-ai = { path = "../llm-ai" }
 
 # Utils
+tokio-stream = "0.1"
 anyhow = "1"
 sha2 = "0.10"
 tracing = "0.1"

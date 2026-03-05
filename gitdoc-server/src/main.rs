@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(cfg),
     });
 
-    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries, converse};
+    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries, converse, cheatsheet};
     use gitdoc_server::api::search as search_api;
 
     let app = Router::new()
@@ -88,6 +88,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/repos/{repo_id}", get(gitdoc_server::api::repos::get_repo).delete(gitdoc_server::api::repos::delete_repo))
         .route("/repos/{repo_id}/index", post(gitdoc_server::api::repos::index_repo))
         .route("/repos/{repo_id}/fetch", post(gitdoc_server::api::repos::fetch_repo))
+        .route("/repos/{repo_id}/cheatsheet", post(cheatsheet::generate_cheatsheet_handler).get(cheatsheet::get_cheatsheet_handler))
+        .route("/repos/{repo_id}/cheatsheet/stream", post(cheatsheet::stream_generate_cheatsheet_handler))
+        .route("/repos/{repo_id}/cheatsheet/patches", get(cheatsheet::list_patches_handler))
+        .route("/repos/{repo_id}/cheatsheet/patches/{patch_id}", get(cheatsheet::get_patch_handler))
         .route("/snapshots/{snapshot_id}/overview", get(snapshots::get_overview))
         .route("/snapshots/{snapshot_id}/docs", get(snapshots::list_docs))
         .route("/snapshots/{snapshot_id}/docs/{*path}", get(snapshots::get_doc_content))
@@ -103,7 +107,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/snapshots/{snapshot_id}/summary", get(summaries::get_summary))
         .route("/snapshots/{snapshot_id}/explain", get(gitdoc_server::api::explain::explain))
         .route("/snapshots/{snapshot_id}/converse", post(converse::converse))
+        .route("/snapshots/{snapshot_id}/conversations", get(converse::list_conversations_handler))
         .route("/snapshots/{snapshot_id}/conversations/{conversation_id}", delete(converse::delete_conversation_handler))
+        .route("/snapshots/{snapshot_id}/conversations/{conversation_id}/turns", get(converse::list_turns_handler))
         .route("/snapshots/{from_id}/diff/{to_id}", get(snapshots::diff_symbols))
         .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
         .route("/snapshots/{snapshot_id}/search/docs", get(search_api::search_docs))

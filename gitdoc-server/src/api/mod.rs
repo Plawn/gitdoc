@@ -8,3 +8,4 @@ pub mod summaries;
 pub mod search;
 pub mod explain;
 pub mod converse;
+pub mod cheatsheet;

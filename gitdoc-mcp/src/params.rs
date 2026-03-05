@@ -265,6 +265,21 @@ pub struct ConversationResetParams {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct GetCheatsheetParams {
+    /// The repo ID
+    pub repo_id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateCheatsheetParams {
+    /// The repo ID
+    pub repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    pub reference: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct SemanticSearchParams {
     /// The repo ID
     pub repo_id: String,

@@ -1039,6 +1039,7 @@ name = "gitdoc-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures-util",
  "mcp-framework",
  "reqwest",
  "rmcp",
@@ -1071,6 +1072,7 @@ dependencies = [
  "testcontainers",
  "testcontainers-modules",
  "tokio",
+ "tokio-stream",
  "toml",
  "tower-http",
  "tracing",

@@ -1,0 +1,42 @@
+# GitDoc server configuration
+# Copy to gitdoc.toml (or set GITDOC_CONFIG to point to your file).
+# Environment variables take precedence over values here.
+
+bind_addr = "127.0.0.1:3000"
+database_url = "postgres://localhost/gitdoc"
+index_path = "./gitdoc_index"
+repos_dir = "./gitdoc_repos"
+log_format = "text"  # "text" or "json"
+
+# Additional directories to exclude during indexing (on top of built-in:
+# node_modules/, target/, .git/, vendor/, .next/, dist/, build/, __pycache__/)
+# exclusion_patterns = ["my_custom_dir/"]
+
+# Conversation context window management
+# max_prompt_tokens = 12000         # Total token budget for the LLM prompt
+# condensation_threshold = 6000     # Trigger history condensation after this many raw turn tokens
+
+# Embedding provider for semantic search (pick one)
+# [embedding]
+# provider = "cohere"     # or "openai"
+# api_key = "your-key"
+
+# LLM for summaries, cheatsheets, and conversational mode
+# [llm]
+# kind = "azure"          # "azure", "azure_inference", or "ollama"
+# endpoint = "https://your-resource.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-02-01"
+# key = "your-api-key"
+# model = "gpt-4o"
+
+## Azure AI Inference (GitHub Models)
+# [llm]
+# kind = "azure_inference"
+# endpoint = "https://models.inference.ai.azure.com/chat/completions"
+# key = "your-github-token"
+# model = "gpt-4o"
+
+## Ollama (local, no key needed)
+# [llm]
+# kind = "ollama"
+# endpoint = "http://localhost:11434/v1/chat/completions"
+# model = "llama3.1"

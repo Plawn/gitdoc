@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use futures_util::StreamExt;
 
 use crate::types::*;
 
@@ -507,6 +508,62 @@ impl GitdocClient {
         Ok(resp.json().await?)
     }
 
+    pub async fn get_cheatsheet(&self, repo_id: &str) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .get(format!("{}/repos/{}/cheatsheet", self.base_url, repo_id))
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(serde_json::json!({}));
+        }
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn generate_cheatsheet(
+        &self,
+        repo_id: &str,
+        snapshot_id: i64,
+        trigger: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut body = serde_json::json!({ "snapshot_id": snapshot_id });
+        if let Some(t) = trigger {
+            body["trigger"] = serde_json::Value::String(t.to_string());
+        }
+        let resp = self
+            .http
+            .post(format!("{}/repos/{}/cheatsheet", self.base_url, repo_id))
+            .json(&body)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn list_cheatsheet_patches(
+        &self,
+        repo_id: &str,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<serde_json::Value> {
+        let mut url = format!("{}/repos/{}/cheatsheet/patches", self.base_url, repo_id);
+        let mut params = Vec::new();
+        if let Some(l) = limit {
+            params.push(format!("limit={}", l));
+        }
+        if let Some(o) = offset {
+            params.push(format!("offset={}", o));
+        }
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+        let resp = self.http.get(&url).send().await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     pub async fn get_summary(
         &self,
         snapshot_id: i64,
@@ -520,4 +577,74 @@ impl GitdocClient {
         let resp = check_response(resp).await?;
         Ok(resp.json().await?)
     }
+
+    /// Stream cheatsheet generation progress via SSE.
+    /// Returns a receiver that yields progress events.
+    pub async fn stream_generate_cheatsheet(
+        &self,
+        repo_id: &str,
+        snapshot_id: i64,
+        trigger: &str,
+    ) -> Result<tokio::sync::mpsc::Receiver<CheatsheetProgressEvent>> {
+        let body = serde_json::json!({
+            "snapshot_id": snapshot_id,
+            "trigger": trigger,
+        });
+        let resp = self
+            .http
+            .post(format!("{}/repos/{}/cheatsheet/stream", self.base_url, repo_id))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!("HTTP {}: {}", status.as_u16(), body));
+        }
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<CheatsheetProgressEvent>(16);
+
+        let mut stream = resp.bytes_stream();
+        tokio::spawn(async move {
+            let mut buf = String::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = match chunk {
+                    Ok(c) => c,
+                    Err(_) => break,
+                };
+                buf.push_str(&String::from_utf8_lossy(&chunk));
+
+                // Parse SSE events: split on double newline
+                while let Some(pos) = buf.find("\n\n") {
+                    let event_block = buf[..pos].to_string();
+                    buf = buf[pos + 2..].to_string();
+
+                    for line in event_block.lines() {
+                        if let Some(data) = line.strip_prefix("data:") {
+                            let data = data.trim();
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                let event = CheatsheetProgressEvent {
+                                    stage: json.get("stage").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                    message: json.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                    patch_id: json.get("patch_id").and_then(|v| v.as_i64()),
+                                };
+                                if tx.send(event).await.is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+}
+
+pub struct CheatsheetProgressEvent {
+    pub stage: String,
+    pub message: String,
+    pub patch_id: Option<i64>,
 }

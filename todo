@@ -16,3 +16,12 @@ ce server répond au pain point du coup de l'exploraion des
   est ce que le probleme est clair ? prend aussi en compte ton       
   avis, c'est claude code qui va utiliser ce serveur derrire         
   propose un plan 
+
+- ajouter une notion de conseil de dépendance
+- visu sur l'architecture courante et passée
+- connaitre les pitfalls
+
+
+next step
+
+-> port gitdoc-server to r2e using gitdoc on r2e

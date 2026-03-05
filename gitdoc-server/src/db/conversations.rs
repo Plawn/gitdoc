@@ -18,7 +18,7 @@ impl super::Database {
         snapshot_id: i64,
     ) -> Result<Option<ConversationRow>> {
         let row = sqlx::query_as::<_, ConversationRow>(
-            "SELECT id, snapshot_id, condensed_context, raw_turn_tokens, created_at, updated_at
+            "SELECT id, snapshot_id, condensed_context, raw_turn_tokens, condensed_up_to, created_at, updated_at
              FROM conversations WHERE id = $1 AND snapshot_id = $2",
         )
         .bind(conversation_id)
@@ -31,16 +31,18 @@ impl super::Database {
     pub async fn list_recent_turns(
         &self,
         conversation_id: i64,
+        after_index: i32,
         limit: i64,
     ) -> Result<Vec<ConversationTurnRow>> {
         let rows = sqlx::query_as::<_, ConversationTurnRow>(
             "SELECT id, conversation_id, turn_index, question, answer, sources, created_at
              FROM conversation_turns
-             WHERE conversation_id = $1
+             WHERE conversation_id = $1 AND turn_index > $2
              ORDER BY turn_index DESC
-             LIMIT $2",
+             LIMIT $3",
         )
         .bind(conversation_id)
+        .bind(after_index)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
@@ -95,16 +97,73 @@ impl super::Database {
         &self,
         conversation_id: i64,
         condensed: &str,
+        condensed_up_to: i32,
     ) -> Result<()> {
         sqlx::query(
-            "UPDATE conversations SET condensed_context = $1, raw_turn_tokens = 0, updated_at = NOW()
-             WHERE id = $2",
+            "UPDATE conversations SET condensed_context = $1, raw_turn_tokens = 0, condensed_up_to = $2, updated_at = NOW()
+             WHERE id = $3",
         )
         .bind(condensed)
+        .bind(condensed_up_to)
         .bind(conversation_id)
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn list_conversations(
+        &self,
+        snapshot_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<ConversationRow>, i64)> {
+        let (total,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM conversations WHERE snapshot_id = $1",
+        )
+        .bind(snapshot_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let rows = sqlx::query_as::<_, ConversationRow>(
+            "SELECT id, snapshot_id, condensed_context, raw_turn_tokens, condensed_up_to, created_at, updated_at
+             FROM conversations WHERE snapshot_id = $1
+             ORDER BY updated_at DESC
+             LIMIT $2 OFFSET $3",
+        )
+        .bind(snapshot_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok((rows, total))
+    }
+
+    pub async fn list_all_turns(
+        &self,
+        conversation_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<ConversationTurnRow>, i64)> {
+        let (total,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id = $1",
+        )
+        .bind(conversation_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let rows = sqlx::query_as::<_, ConversationTurnRow>(
+            "SELECT id, conversation_id, turn_index, question, answer, sources, created_at
+             FROM conversation_turns
+             WHERE conversation_id = $1
+             ORDER BY turn_index ASC
+             LIMIT $2 OFFSET $3",
+        )
+        .bind(conversation_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok((rows, total))
     }
 
     pub async fn delete_conversation(
