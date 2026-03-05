@@ -249,3 +249,26 @@ pub struct ModuleSymbol {
     pub doc_comment: Option<String>,
     pub parent_id: Option<i64>,
 }
+
+// --- Conversation types ---
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ConversationRow {
+    pub id: i64,
+    pub snapshot_id: i64,
+    pub condensed_context: String,
+    pub raw_turn_tokens: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct ConversationTurnRow {
+    pub id: i64,
+    pub conversation_id: i64,
+    pub turn_index: i32,
+    pub question: String,
+    pub answer: String,
+    pub sources: serde_json::Value,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}

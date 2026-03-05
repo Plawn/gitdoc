@@ -6,6 +6,7 @@ mod docs;
 mod refs;
 mod embeddings;
 mod summaries;
+mod conversations;
 mod gc;
 pub mod types;
 

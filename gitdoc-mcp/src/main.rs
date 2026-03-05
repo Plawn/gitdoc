@@ -5,7 +5,7 @@ mod server;
 mod snapshot_resolver;
 mod types;
 
-use mcp_framework::{run, McpApp, AuthProvider};
+use mcp_framework::{run, McpApp, AuthProvider, session::SessionStore};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     run(McpApp {
         name: "gitdoc-mcp",
         auth: AuthProvider::None,
-        server_factory: move |_token_store| {
+        server_factory: move |_token_store, _session_store: SessionStore<()>| {
             let client = client::GitdocClient::new(&cfg.server_url);
             server::GitdocMcpServer::new(client)
         },
@@ -22,6 +22,7 @@ async fn main() -> anyhow::Result<()> {
         settings: None,
         capability_registry: None,
         capability_filter: None,
+        session_store: None,
     })
     .await
 }

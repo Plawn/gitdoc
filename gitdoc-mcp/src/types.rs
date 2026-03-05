@@ -242,6 +242,23 @@ pub struct SummaryRow {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct ConversationResponse {
+    pub conversation_id: i64,
+    pub answer: String,
+    pub sources: Vec<SourceRef>,
+    pub turn_index: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SourceRef {
+    pub kind: String,
+    pub name: String,
+    pub file_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SummarizeResponse {
     pub snapshot_id: i64,
     pub scope: String,

@@ -1,2 +1,18 @@
 - fournir un agent conversationnel sous forme de mcp pour aider un agent de code a faire son dev, l'agent helper possède son contexte et une cheatsheet du repo
 - 2 modes granular and simple (many tools vs few tools and helper agent)
+
+
+--- 
+
+ce server répond au pain point du coup de l'exploraion des        
+  grosses code base par des agents de code                           
+  l'idée est d'avoir deux mode, un granulaire(actuel) et un nouveau  
+  plus conversationnel où un agent qui a fait l'étude une fois a     
+  un contexte optimisé et peux efficacement répondre aux questions   
+  et si besoin deep dive d'utiliser en interne les outils plus       
+  précis, il peut garder un contexte de la conversation pour         
+  optimiser le deep dive                                             
+  ce que je viens de décire correspond a @todo normalement           
+  est ce que le probleme est clair ? prend aussi en compte ton       
+  avis, c'est claude code qui va utiliser ce serveur derrire         
+  propose un plan 

@@ -6,16 +6,22 @@ use rmcp::{
     model::*,
     tool, tool_router, tool_handler,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::client::GitdocClient;
 use crate::params::*;
 use crate::snapshot_resolver::resolve_snapshot;
 
+/// Per-repo conversation state: (snapshot_id, conversation_id)
+type ConversationMap = Arc<Mutex<HashMap<String, (i64, i64)>>>;
+
 #[derive(Clone)]
 pub struct GitdocMcpServer {
     tool_router: ToolRouter<Self>,
     client: Arc<GitdocClient>,
+    conversations: ConversationMap,
 }
 
 fn text_result(text: String) -> Result<CallToolResult, McpError> {
@@ -32,6 +38,7 @@ impl GitdocMcpServer {
         Self {
             tool_router: Self::tool_router(),
             client: Arc::new(client),
+            conversations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -403,6 +410,79 @@ impl GitdocMcpServer {
             Err(e) => err_result(format!("error: {e}")),
         }
     }
+
+    #[tool(description = "Ask a question about a codebase in conversational mode. Maintains a persistent conversation per repo — follow-up questions automatically have context from previous turns. Uses semantic search + LLM to produce a synthesized answer in a SINGLE call. This is the PREFERRED tool for exploring a codebase: just ask questions naturally ('What does this crate do?', 'How is error handling done?', 'Show me the main entry point') and the conversation builds context over time. Requires both embedding provider and LLM provider on the server.")]
+    async fn ask(
+        &self,
+        params: Parameters<AskParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+
+        // Look up or create conversation for this repo
+        let conversation_id = {
+            let map = self.conversations.lock().await;
+            map.get(&p.repo_id).and_then(|(sid, cid)| {
+                if *sid == snapshot_id { Some(*cid) } else { None }
+            })
+        };
+
+        match self.client.converse(snapshot_id, &p.question, conversation_id, p.limit).await {
+            Ok(resp) => {
+                // Store the conversation_id for future calls
+                {
+                    let mut map = self.conversations.lock().await;
+                    map.insert(p.repo_id.clone(), (snapshot_id, resp.conversation_id));
+                }
+
+                // Format response
+                let mut output = resp.answer.clone();
+                if !resp.sources.is_empty() {
+                    output.push_str("\n\n---\n**Sources:**\n");
+                    for src in &resp.sources {
+                        if let Some(sid) = src.symbol_id {
+                            output.push_str(&format!("- [{}] {} ({}) — symbol_id: {}\n", src.kind, src.name, src.file_path, sid));
+                        } else {
+                            output.push_str(&format!("- [{}] {} ({})\n", src.kind, src.name, src.file_path));
+                        }
+                    }
+                }
+                text_result(output)
+            }
+            Err(e) => err_result(format!("error: {e}")),
+        }
+    }
+
+    #[tool(description = "Reset the conversation for a repository. Clears all conversation history so the next 'ask' call starts fresh. Use this when switching topics or when the conversation context has become stale or irrelevant.")]
+    async fn conversation_reset(
+        &self,
+        params: Parameters<ConversationResetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let p = params.0;
+        let snapshot_id = match resolve_snapshot(&self.client, &p.repo_id, p.reference.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => return err_result(format!("error resolving snapshot: {e}")),
+        };
+
+        let conversation_id = {
+            let mut map = self.conversations.lock().await;
+            map.remove(&p.repo_id).and_then(|(sid, cid)| {
+                if sid == snapshot_id { Some(cid) } else { None }
+            })
+        };
+
+        if let Some(cid) = conversation_id {
+            match self.client.delete_conversation(snapshot_id, cid).await {
+                Ok(_) => text_result("Conversation reset. Next 'ask' call will start a new conversation.".into()),
+                Err(e) => err_result(format!("error deleting conversation: {e}")),
+            }
+        } else {
+            text_result("No active conversation for this repo.".into())
+        }
+    }
 }
 
 #[tool_handler]
@@ -492,12 +572,24 @@ IMPORTANT: Do NOT clone repositories yourself. The server handles all git clonin
 | `summarize` | **Generate** an LLM summary (costs tokens) | Generated summary for crate/module/type |
 | `get_summary` | **Retrieve** a previously generated summary | Cached summary or list of available summaries |
 
+### Conversational Mode (RECOMMENDED — fewest tool calls)
+| Tool | When to use | Returns |
+|------|-------------|---------|
+| `ask` | **Ask any question about the codebase** — maintains conversation context across calls | LLM-synthesized answer with source references |
+| `conversation_reset` | Clear conversation history for a repo to start fresh | Confirmation message |
+
 ### Maintenance
 | Tool | When to use |
 |------|-------------|
 | `diff_symbols` | Compare two snapshots — see added/removed/modified symbols |
 
 ## Recommended Exploration Workflow
+
+### Conversational mode (PREFERRED — minimum tool calls):
+1. `ask(repo_id: "X", question: "What does this crate do?")` → get an overview
+2. `ask(repo_id: "X", question: "How does error handling work?")` → follow-up with context
+3. `ask(repo_id: "X", question: "Show me the main types")` → keeps building on prior answers
+4. `conversation_reset(repo_id: "X")` → only when switching to unrelated topic
 
 ### For understanding a complex library (Rust crate with many modules):
 1. `get_module_tree(repo_id: "X", depth: 2)` → see the module hierarchy

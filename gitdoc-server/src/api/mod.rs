@@ -7,3 +7,4 @@ pub mod type_context;
 pub mod summaries;
 pub mod search;
 pub mod explain;
+pub mod converse;

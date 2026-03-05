@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(cfg),
     });
 
-    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries};
+    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries, converse};
     use gitdoc_server::api::search as search_api;
 
     let app = Router::new()
@@ -102,6 +102,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/snapshots/{snapshot_id}/summarize", post(summaries::summarize))
         .route("/snapshots/{snapshot_id}/summary", get(summaries::get_summary))
         .route("/snapshots/{snapshot_id}/explain", get(gitdoc_server::api::explain::explain))
+        .route("/snapshots/{snapshot_id}/converse", post(converse::converse))
+        .route("/snapshots/{snapshot_id}/conversations/{conversation_id}", delete(converse::delete_conversation_handler))
         .route("/snapshots/{from_id}/diff/{to_id}", get(snapshots::diff_symbols))
         .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
         .route("/snapshots/{snapshot_id}/search/docs", get(search_api::search_docs))

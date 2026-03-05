@@ -243,6 +243,28 @@ pub struct ExplainParams {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct AskParams {
+    /// The repo ID
+    pub repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    pub reference: Option<String>,
+    /// Natural language question about the codebase
+    pub question: String,
+    /// Maximum number of semantic search hits for context (default: 8)
+    pub limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ConversationResetParams {
+    /// The repo ID
+    pub repo_id: String,
+    /// Snapshot reference: a label (e.g. "v1.0"), a commit SHA prefix (e.g. "abc123"), or omit to use the latest snapshot
+    #[serde(rename = "ref")]
+    pub reference: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct SemanticSearchParams {
     /// The repo ID
     pub repo_id: String,

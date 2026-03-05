@@ -463,6 +463,50 @@ impl GitdocClient {
         Ok(resp.json().await?)
     }
 
+    pub async fn converse(
+        &self,
+        snapshot_id: i64,
+        question: &str,
+        conversation_id: Option<i64>,
+        limit: Option<usize>,
+    ) -> Result<ConversationResponse> {
+        let mut body = serde_json::json!({ "q": question });
+        if let Some(cid) = conversation_id {
+            body["conversation_id"] = serde_json::Value::Number(cid.into());
+        }
+        if let Some(l) = limit {
+            body["limit"] = serde_json::Value::Number(l.into());
+        }
+        let resp = self
+            .http
+            .post(format!(
+                "{}/snapshots/{}/converse",
+                self.base_url, snapshot_id
+            ))
+            .json(&body)
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_conversation(
+        &self,
+        snapshot_id: i64,
+        conversation_id: i64,
+    ) -> Result<serde_json::Value> {
+        let resp = self
+            .http
+            .delete(format!(
+                "{}/snapshots/{}/conversations/{}",
+                self.base_url, snapshot_id, conversation_id
+            ))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     pub async fn get_summary(
         &self,
         snapshot_id: i64,

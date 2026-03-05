@@ -2514,8 +2514,8 @@ dependencies = [
 
 [[package]]
 name = "mcp-framework"
-version = "0.1.6"
-source = "git+https://github.com/Plawn/mcp-framework?tag=v0.1.6#17d634c2bd04b3ec778d1e3267254c0a8a97b6a9"
+version = "0.1.8"
+source = "git+https://github.com/Plawn/mcp-framework?tag=v0.1.8#95ce7c3f908997ea93ea420ea264f647be382d12"
 dependencies = [
  "anyhow",
  "axum",
@@ -3342,6 +3342,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2faf35b7d3c4b7f8c21c45bb014011b32a0ce6444bf6094da04daab01a8c3c34"
 dependencies = [
+ "axum",
  "base64 0.22.1",
  "bytes",
  "chrono",
