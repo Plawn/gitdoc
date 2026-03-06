@@ -6,9 +6,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::embeddings;
 use crate::error::GitdocError;
-use super::DeletedResponse;
+use super::{DeletedResponse, maybe_embed};
 
 #[derive(Deserialize)]
 pub struct CreateDecisionRequest {
@@ -43,12 +42,7 @@ pub async fn create_decision(
 
     let embed_text = format!("{} {} {} {} {}", req.title, context, req.choice, reasoning, alternatives);
 
-    let embedding = if let Some(ref embedder) = state.embedder {
-        let vec = embedder.embed_query(&embed_text).await.map_err(GitdocError::Internal)?;
-        Some(embeddings::to_pgvector(&vec))
-    } else {
-        None
-    };
+    let embedding = maybe_embed(state.embedder.as_deref(), &embed_text).await?;
 
     let id = state.db.create_arch_decision(
         req.project_profile_id.as_deref(),
@@ -106,12 +100,7 @@ pub async fn update_decision(
         new_outcome.unwrap_or("")
     );
 
-    let embedding = if let Some(ref embedder) = state.embedder {
-        let vec = embedder.embed_query(&embed_text).await.map_err(GitdocError::Internal)?;
-        Some(embeddings::to_pgvector(&vec))
-    } else {
-        None
-    };
+    let embedding = maybe_embed(state.embedder.as_deref(), &embed_text).await?;
 
     let updated = state.db.update_arch_decision(
         id,

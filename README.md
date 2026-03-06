@@ -36,7 +36,7 @@ Multiple agents share the same indexed data without re-indexing.
 - **Persistent repo cheatsheets** — LLM-generated architecture/types/patterns summaries that accumulate knowledge across sessions
 - **Conversational mode** — multi-turn Q&A with context persistence; cheatsheet auto-injected into prompts
 - **Architect module** — technology advisor backed by a knowledge base of library profiles and stack rules; auto-injects relevant guidance into conversations or available on-demand via `architect_advise`
-- **Two MCP modes** — simple (8 tools, conversational) for coding agents; granular (31 tools) for fine-grained control
+- **Two MCP modes** — simple (9 tools, conversational) for coding agents; granular (52 tools) for fine-grained control
 
 ### Supported Languages
 
@@ -80,23 +80,47 @@ GITDOC_INDEX_PATH=./gitdoc_index \
 cargo run --bin gitdoc-server
 ```
 
-### 4. Run the MCP client
+### 4. Add to Claude Code
+
+The fastest way to add GitDoc as an MCP server in Claude Code:
 
 ```sh
-GITDOC_SERVER_URL=http://127.0.0.1:3000 cargo run --bin gitdoc-mcp
+# Simple mode (9 tools — recommended for most use cases)
+claude mcp add gitdoc \
+  -e GITDOC_SERVER_URL=http://127.0.0.1:3000 \
+  -- cargo run --release --bin gitdoc-mcp --manifest-path /path/to/gitdoc/Cargo.toml
+
+# Granular mode (52 tools — full control over symbols, refs, search, architect KB)
+claude mcp add gitdoc \
+  -e GITDOC_SERVER_URL=http://127.0.0.1:3000 \
+  -e GITDOC_MCP_MODE=granular \
+  -- cargo run --release --bin gitdoc-mcp --manifest-path /path/to/gitdoc/Cargo.toml
 ```
 
-By default the MCP server starts in **simple mode** (7 tools, conversational). Set `GITDOC_MCP_MODE=granular` for all 21 tools.
+Add `-s project` to scope it to the current project, or `-s user` for global availability:
 
-Or add it to your Claude Code MCP config:
+```sh
+claude mcp add gitdoc -s user \
+  -e GITDOC_SERVER_URL=http://127.0.0.1:3000 \
+  -- cargo run --release --bin gitdoc-mcp --manifest-path /path/to/gitdoc/Cargo.toml
+```
+
+Verify it's registered:
+
+```sh
+claude mcp list
+```
+
+#### Alternative: manual JSON config
+
+You can also edit `~/.claude/claude_desktop_config.json` (or `.claude/settings.json` in a project) directly:
 
 ```json
 {
   "mcpServers": {
     "gitdoc": {
       "command": "cargo",
-      "args": ["run", "--bin", "gitdoc-mcp"],
-      "cwd": "/path/to/gitdoc",
+      "args": ["run", "--release", "--bin", "gitdoc-mcp", "--manifest-path", "/path/to/gitdoc/Cargo.toml"],
       "env": {
         "GITDOC_SERVER_URL": "http://127.0.0.1:3000"
       }
@@ -105,22 +129,16 @@ Or add it to your Claude Code MCP config:
 }
 ```
 
-For granular mode (all tools):
+For granular mode, add `"GITDOC_MCP_MODE": "granular"` to the `env` block.
 
-```json
-{
-  "mcpServers": {
-    "gitdoc": {
-      "command": "cargo",
-      "args": ["run", "--bin", "gitdoc-mcp"],
-      "cwd": "/path/to/gitdoc",
-      "env": {
-        "GITDOC_SERVER_URL": "http://127.0.0.1:3000",
-        "GITDOC_MCP_MODE": "granular"
-      }
-    }
-  }
-}
+#### Using a pre-built binary
+
+If you've built the release binary, you can point directly to it instead of using `cargo run`:
+
+```sh
+claude mcp add gitdoc \
+  -e GITDOC_SERVER_URL=http://127.0.0.1:3000 \
+  -- /path/to/gitdoc/target/release/gitdoc-mcp
 ```
 
 ## Configuration
@@ -196,7 +214,7 @@ Environment variables take precedence over TOML values. See [`gitdoc.example.tom
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
 | `GITDOC_SERVER_URL` | `http://127.0.0.1:3000` | URL of the gitdoc-server instance |
-| `GITDOC_MCP_MODE` | `simple` | Tool mode: `simple` (7 conversational tools) or `granular` (all 21 tools) |
+| `GITDOC_MCP_MODE` | `simple` | Tool mode: `simple` (9 conversational tools) or `granular` (all 52 tools) |
 
 ## API Reference
 
@@ -248,8 +266,10 @@ GET  /snapshots/:id/symbols/:sym_id/implementations
 ### Conversations
 
 ```
-POST   /snapshots/:id/converse                          Multi-turn Q&A  { q, conversation_id?, limit? }
-DELETE /snapshots/:id/conversations/:conversation_id    Delete conversation (auto-updates cheatsheet)
+POST   /snapshots/:id/converse                                      Multi-turn Q&A  { q, conversation_id?, limit? }
+GET    /snapshots/:id/conversations                                  List conversations for a snapshot
+GET    /snapshots/:id/conversations/:conversation_id/turns           List turns of a conversation
+DELETE /snapshots/:id/conversations/:conversation_id                 Delete conversation (auto-updates cheatsheet)
 ```
 
 ### Architect
@@ -264,6 +284,20 @@ GET    /architect/rules                  List stack rules  ?rule_type=&subject=
 POST   /architect/rules                  Create/update a stack rule  { id?, rule_type, subject, content, lib_profile_id?, priority? }
 DELETE /architect/rules/:id              Delete a stack rule
 POST   /architect/advise                 Ask for architecture advice  { question, limit? }
+POST   /architect/compare               Compare libraries side-by-side  { lib_ids, criteria }
+GET    /architect/projects               List project profiles
+POST   /architect/projects               Create/update a project profile  { id, name, repo_id?, description?, stack?, constraints?, code_style? }
+GET    /architect/projects/:id           Get a project profile
+DELETE /architect/projects/:id           Delete a project profile
+GET    /architect/decisions              List architecture decisions  ?project_profile_id=&status=
+POST   /architect/decisions              Record a decision  { title, choice, project_profile_id?, context?, alternatives?, reasoning? }
+GET    /architect/decisions/:id          Get a decision
+PUT    /architect/decisions/:id          Update outcome/status  { outcome?, status? }
+DELETE /architect/decisions/:id          Delete a decision
+GET    /architect/patterns               List architecture patterns  ?category=
+POST   /architect/patterns               Add a pattern  { name, pattern_text, category?, description?, libs_involved? }
+GET    /architect/patterns/:id           Get a pattern
+DELETE /architect/patterns/:id           Delete a pattern
 ```
 
 When `GITDOC_ARCHITECT_MODE=auto`, relevant library profiles and stack rules are automatically injected into conversation prompts based on semantic similarity to the user's question.
@@ -294,12 +328,12 @@ GET  /health    → "ok"
 
 The MCP server supports two modes, selected via `GITDOC_MCP_MODE`:
 
-- **Simple mode** (default) — 8 tools centered around conversational `ask` + `architect_advise`. Best for coding agents like Claude Code that benefit from fewer, high-level tools.
-- **Granular mode** — all 31 tools for fine-grained control over docs, symbols, references, search, and the Architect knowledge base.
+- **Simple mode** (default) — 9 tools centered around conversational `ask` + `architect_advise`. Best for coding agents like Claude Code that benefit from fewer, high-level tools.
+- **Granular mode** — all 52 tools for fine-grained control over docs, symbols, references, search, cheatsheet history, and the full Architect knowledge base (library profiles, stack rules, project profiles, decisions, patterns).
 
 Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most recent snapshot is used.
 
-### Simple Mode Tools (8)
+### Simple Mode Tools (9)
 
 | Tool | Description |
 |------|-------------|
@@ -311,8 +345,9 @@ Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most rece
 | `ask` | Multi-turn Q&A — maintains context across calls, auto-generates and injects cheatsheet |
 | `conversation_reset` | Clear conversation history (auto-updates cheatsheet with learnings) |
 | `architect_advise` | Ask for technology/architecture recommendations based on the knowledge base |
+| `compare_libs` | Compare libraries side-by-side with fit scores, pros/cons, and recommendation |
 
-### Additional Granular Mode Tools (+23)
+### Additional Granular Mode Tools (+43)
 
 #### Setup
 | Tool | Description |
@@ -361,8 +396,10 @@ Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most rece
 |------|-------------|
 | `get_cheatsheet` | Read the persistent repo cheatsheet (architecture, key types, patterns, gotchas) |
 | `update_cheatsheet` | Generate or regenerate the cheatsheet (LLM-powered) |
+| `list_cheatsheet_patches` | Browse cheatsheet evolution — patch history with change summaries and triggers |
+| `get_cheatsheet_patch` | View a specific patch diff (before/after content, change summary) |
 
-#### Architect (Knowledge Base)
+#### Architect — Library Profiles
 | Tool | Description |
 |------|-------------|
 | `list_lib_profiles` | List library profiles in the knowledge base |
@@ -371,9 +408,36 @@ Most tools accept `repo_id` + optional `ref`. If `ref` is omitted, the most rece
 | `import_lib_profile` | Import a library profile manually (markdown text) |
 | `generate_lib_profile` | Regenerate a profile for an already-indexed library |
 | `delete_lib_profile` | Delete a library profile |
+
+#### Architect — Stack Rules
+| Tool | Description |
+|------|-------------|
 | `add_stack_rule` | Add a global stack rule (preferences, constraints, guidelines) |
 | `list_stack_rules` | List stack rules with optional filters |
 | `delete_stack_rule` | Delete a stack rule |
+
+#### Architect — Project Profiles
+| Tool | Description |
+|------|-------------|
+| `create_project_profile` | Define a project's stack, constraints, and code style |
+| `get_project_profile` | Get a project profile |
+| `list_project_profiles` | List all project profiles |
+| `delete_project_profile` | Remove a project profile |
+
+#### Architect — Decisions
+| Tool | Description |
+|------|-------------|
+| `record_decision` | Record an architecture decision (title, choice, reasoning, alternatives) |
+| `list_decisions` | List decisions (filter by project, status) |
+| `update_decision` | Update a decision's outcome or status (active/superseded/reverted) |
+
+#### Architect — Patterns
+| Tool | Description |
+|------|-------------|
+| `add_pattern` | Add an architecture pattern (e.g. "JWT auth with axum + tower") |
+| `list_patterns` | List patterns (filter by category) |
+| `get_pattern` | Get a specific pattern with code examples |
+| `delete_pattern` | Remove a pattern |
 
 #### Maintenance
 | Tool | Description |

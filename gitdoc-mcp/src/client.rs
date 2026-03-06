@@ -553,6 +553,19 @@ impl GitdocClient {
         Ok(resp.json().await?)
     }
 
+    pub async fn get_cheatsheet_patch(
+        &self,
+        repo_id: &str,
+        patch_id: i64,
+    ) -> Result<serde_json::Value> {
+        let resp = self.http
+            .get(format!("{}/repos/{}/cheatsheet/patches/{}", self.base_url, repo_id, patch_id))
+            .send()
+            .await?;
+        let resp = check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     pub async fn get_summary(
         &self,
         snapshot_id: i64,

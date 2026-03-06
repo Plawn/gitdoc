@@ -1,7 +1,16 @@
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use crate::db::SymbolForRef;
+
+static RE_RUST_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"use\s+crate::([^;]+);").unwrap());
+static RE_TS_NAMED_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"import\s+\{([^}]+)\}\s+from\s+['"](\.[^'"]+)['"]"#).unwrap());
+static RE_TS_DEFAULT_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"import\s+(\w+)\s+from\s+['"](\.[^'"]+)['"]"#).unwrap());
+static RE_IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[a-zA-Z_][a-zA-Z0-9_]+").unwrap());
+static RE_IMPL_FOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"impl\s+(\w+)\s+for\s+(\w+)").unwrap());
+static RE_EXTENDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"class\s+\w+\s+extends\s+(\w+)").unwrap());
+static RE_IMPLEMENTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"implements\s+([\w\s,]+)").unwrap());
 
 #[derive(Debug, Clone)]
 pub struct DetectedRef {
@@ -132,8 +141,7 @@ impl ReferenceResolver {
         let mut imports = Vec::new();
 
         // Match: use crate::path::to::thing;
-        let re_simple = Regex::new(r"use\s+crate::([^;]+);").unwrap();
-        for cap in re_simple.captures_iter(source) {
+        for cap in RE_RUST_USE.captures_iter(source) {
             let path_str = cap[1].trim();
 
             // Handle brace groups: use crate::module::{A, B}
@@ -201,8 +209,7 @@ impl ReferenceResolver {
         let mut imports = Vec::new();
 
         // Named imports: import { A, B } from './module'
-        let re_named = Regex::new(r#"import\s+\{([^}]+)\}\s+from\s+['"](\.[^'"]+)['"]"#).unwrap();
-        for cap in re_named.captures_iter(source) {
+        for cap in RE_TS_NAMED_IMPORT.captures_iter(source) {
             let names = &cap[1];
             let module_path = &cap[2];
             let file_id = self.resolve_file_id(base_path, module_path);
@@ -226,8 +233,7 @@ impl ReferenceResolver {
         }
 
         // Default imports: import Name from './module'
-        let re_default = Regex::new(r#"import\s+(\w+)\s+from\s+['"](\.[^'"]+)['"]"#).unwrap();
-        for cap in re_default.captures_iter(source) {
+        for cap in RE_TS_DEFAULT_IMPORT.captures_iter(source) {
             let name = cap[1].to_string();
             let module_path = &cap[2];
             let file_id = self.resolve_file_id(base_path, module_path);
@@ -303,8 +309,7 @@ impl ReferenceResolver {
         let mut seen_targets: HashSet<i64> = HashSet::new();
 
         // Extract word tokens from body
-        let re_ident = Regex::new(r"[a-zA-Z_][a-zA-Z0-9_]+").unwrap();
-        for m in re_ident.find_iter(&symbol.body) {
+        for m in RE_IDENT.find_iter(&symbol.body) {
             let word = m.as_str();
             if keywords.contains(word) {
                 continue;
@@ -338,8 +343,7 @@ impl ReferenceResolver {
         }
 
         // Parse: impl Trait for Type  or  impl Type
-        let re_impl = Regex::new(r"impl\s+(\w+)\s+for\s+(\w+)").unwrap();
-        if let Some(cap) = re_impl.captures(&symbol.body) {
+        if let Some(cap) = RE_IMPL_FOR.captures(&symbol.body) {
             let trait_name = &cap[1];
             let _type_name = &cap[2];
 
@@ -368,8 +372,7 @@ impl ReferenceResolver {
         }
 
         // Parse: class X extends Y
-        let re_extends = Regex::new(r"class\s+\w+\s+extends\s+(\w+)").unwrap();
-        if let Some(cap) = re_extends.captures(&symbol.body) {
+        if let Some(cap) = RE_EXTENDS.captures(&symbol.body) {
             let parent_name = &cap[1];
             if let Some(candidates) = self.symbols_by_name.get(parent_name) {
                 if let Some(target) = candidates.first() {
@@ -383,8 +386,7 @@ impl ReferenceResolver {
         }
 
         // Parse: class X implements Y, Z
-        let re_implements = Regex::new(r"implements\s+([\w\s,]+)").unwrap();
-        if let Some(cap) = re_implements.captures(&symbol.body) {
+        if let Some(cap) = RE_IMPLEMENTS.captures(&symbol.body) {
             for iface_name in cap[1].split(',') {
                 let iface_name = iface_name.trim();
                 if iface_name.is_empty() {

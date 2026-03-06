@@ -119,6 +119,8 @@ IMPORTANT: Do NOT clone repositories yourself. The server handles all git clonin
 |------|-------------|---------|
 | `get_cheatsheet` | **Read the repo cheatsheet** — architecture, key types, patterns, gotchas | Current cheatsheet content |
 | `update_cheatsheet` | **Generate/regenerate** the cheatsheet (costs LLM tokens) | Generated cheatsheet with patch ID |
+| `list_cheatsheet_patches` | **Browse cheatsheet evolution** — see how knowledge accumulated over time | Patch history with change summaries and triggers |
+| `get_cheatsheet_patch` | **View a specific patch diff** — prev vs new content, change summary | Full patch with before/after content |
 
 ### Conversational Mode (RECOMMENDED — fewest tool calls)
 | Tool | When to use | Returns |

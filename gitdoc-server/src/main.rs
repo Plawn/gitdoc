@@ -79,19 +79,20 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(cfg),
     });
 
-    use gitdoc_server::api::{snapshots, symbols, public_api, module_tree, type_context, summaries, converse, cheatsheet, architect};
+    use gitdoc_server::api::{repos, snapshots, symbols, public_api, module_tree, type_context, summaries, converse, cheatsheet, architect};
     use gitdoc_server::api::search as search_api;
 
-    let app = Router::new()
-        .route("/health", get(|| async { "ok" }))
-        .route("/repos", post(gitdoc_server::api::repos::create_repo).get(gitdoc_server::api::repos::list_repos))
-        .route("/repos/{repo_id}", get(gitdoc_server::api::repos::get_repo).delete(gitdoc_server::api::repos::delete_repo))
-        .route("/repos/{repo_id}/index", post(gitdoc_server::api::repos::index_repo))
-        .route("/repos/{repo_id}/fetch", post(gitdoc_server::api::repos::fetch_repo))
+    let repo_routes = Router::new()
+        .route("/repos", post(repos::create_repo).get(repos::list_repos))
+        .route("/repos/{repo_id}", get(repos::get_repo).delete(repos::delete_repo))
+        .route("/repos/{repo_id}/index", post(repos::index_repo))
+        .route("/repos/{repo_id}/fetch", post(repos::fetch_repo))
         .route("/repos/{repo_id}/cheatsheet", post(cheatsheet::generate_cheatsheet_handler).get(cheatsheet::get_cheatsheet_handler))
         .route("/repos/{repo_id}/cheatsheet/stream", post(cheatsheet::stream_generate_cheatsheet_handler))
         .route("/repos/{repo_id}/cheatsheet/patches", get(cheatsheet::list_patches_handler))
-        .route("/repos/{repo_id}/cheatsheet/patches/{patch_id}", get(cheatsheet::get_patch_handler))
+        .route("/repos/{repo_id}/cheatsheet/patches/{patch_id}", get(cheatsheet::get_patch_handler));
+
+    let snapshot_routes = Router::new()
         .route("/snapshots/{snapshot_id}/overview", get(snapshots::get_overview))
         .route("/snapshots/{snapshot_id}/docs", get(snapshots::list_docs))
         .route("/snapshots/{snapshot_id}/docs/{*path}", get(snapshots::get_doc_content))
@@ -114,8 +115,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
         .route("/snapshots/{snapshot_id}/search/docs", get(search_api::search_docs))
         .route("/snapshots/{snapshot_id}/search/symbols", get(search_api::search_symbols))
-        .route("/snapshots/{snapshot_id}/search/semantic", get(search_api::search_semantic))
-        .route("/symbols/{symbol_id}", get(symbols::get_symbol))
+        .route("/snapshots/{snapshot_id}/search/semantic", get(search_api::search_semantic));
+
+    let architect_routes = Router::new()
         .route("/architect/libs", get(architect::list_libs).post(architect::create_lib))
         .route("/architect/libs/{id}", get(architect::get_lib).delete(architect::delete_lib))
         .route("/architect/libs/{id}/generate", post(architect::generate_lib_profile_handler))
@@ -128,7 +130,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/architect/decisions", get(architect::list_decisions).post(architect::create_decision))
         .route("/architect/decisions/{id}", get(architect::get_decision).put(architect::update_decision).delete(architect::delete_decision))
         .route("/architect/patterns", get(architect::list_patterns).post(architect::create_pattern))
-        .route("/architect/patterns/{id}", get(architect::get_pattern).delete(architect::delete_pattern))
+        .route("/architect/patterns/{id}", get(architect::get_pattern).delete(architect::delete_pattern));
+
+    let app = Router::new()
+        .route("/health", get(|| async { "ok" }))
+        .merge(repo_routes)
+        .merge(snapshot_routes)
+        .route("/symbols/{symbol_id}", get(symbols::get_symbol))
+        .merge(architect_routes)
         .route("/admin/gc", post(search_api::gc))
         .layer(TraceLayer::new_for_http())
         .with_state(state);

@@ -6,9 +6,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::embeddings;
 use crate::error::GitdocError;
-use super::DeletedResponse;
+use super::{DeletedResponse, maybe_embed};
 
 #[derive(Deserialize)]
 pub struct ListLibsQuery {
@@ -44,23 +43,9 @@ pub async fn create_lib(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateLibRequest>,
 ) -> Result<Json<crate::db::LibProfileRow>, GitdocError> {
-    let profile_text = crate::architect::parse_manual_profile(
-        req.profile.as_deref().unwrap_or(""),
-    );
+    let profile_text = req.profile.as_deref().unwrap_or("").to_string();
 
-    let embedding = if let Some(ref embedder) = state.embedder {
-        if !profile_text.is_empty() {
-            let vec = embedder
-                .embed_query(&profile_text)
-                .await
-                .map_err(GitdocError::Internal)?;
-            Some(embeddings::to_pgvector(&vec))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let embedding = maybe_embed(state.embedder.as_deref(), &profile_text).await?;
 
     state
         .db

@@ -141,11 +141,6 @@ pub async fn generate_lib_profile(
         .ok_or_else(|| anyhow::anyhow!("lib profile vanished after creation"))
 }
 
-/// Parse manual profile text — stored as-is.
-pub fn parse_manual_profile(profile_text: &str) -> String {
-    profile_text.to_string()
-}
-
 /// Get relevant architect context for auto-injection into converse.
 pub async fn get_relevant_architect_context(
     db: &Database,

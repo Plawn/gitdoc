@@ -6,9 +6,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::embeddings;
 use crate::error::GitdocError;
-use super::DeletedResponse;
+use super::{DeletedResponse, maybe_embed};
 
 #[derive(Deserialize)]
 pub struct CreatePatternRequest {
@@ -44,12 +43,7 @@ pub async fn create_pattern(
 
     let embed_text = format!("{} {} {} {}", req.name, category, description, req.pattern_text);
 
-    let embedding = if let Some(ref embedder) = state.embedder {
-        let vec = embedder.embed_query(&embed_text).await.map_err(GitdocError::Internal)?;
-        Some(embeddings::to_pgvector(&vec))
-    } else {
-        None
-    };
+    let embedding = maybe_embed(state.embedder.as_deref(), &embed_text).await?;
 
     let id = state.db.create_arch_pattern(
         &req.name,

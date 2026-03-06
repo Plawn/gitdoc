@@ -6,9 +6,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::embeddings;
 use crate::error::GitdocError;
-use super::DeletedResponse;
+use super::{DeletedResponse, maybe_embed};
 
 #[derive(Deserialize)]
 pub struct CreateProjectProfileRequest {
@@ -45,16 +44,7 @@ pub async fn create_project(
         req.name, description, serde_json::to_string(&stack).unwrap_or_default(), constraints, code_style
     );
 
-    let embedding = if let Some(ref embedder) = state.embedder {
-        if !embed_text.trim().is_empty() {
-            let vec = embedder.embed_query(&embed_text).await.map_err(GitdocError::Internal)?;
-            Some(embeddings::to_pgvector(&vec))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let embedding = maybe_embed(state.embedder.as_deref(), &embed_text).await?;
 
     state.db.upsert_project_profile(
         &req.id,

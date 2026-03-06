@@ -1,5 +1,6 @@
 mod config;
 mod client;
+mod instructions;
 mod mode_filter;
 mod params;
 mod server;

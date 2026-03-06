@@ -279,6 +279,24 @@ pub struct UpdateCheatsheetParams {
     pub reference: Option<String>,
 }
 
+#[derive(Deserialize, JsonSchema)]
+pub struct ListCheatsheetPatchesParams {
+    /// The repo ID
+    pub repo_id: String,
+    /// Maximum number of patches to return (default: 20)
+    pub limit: Option<i64>,
+    /// Offset for pagination (default: 0)
+    pub offset: Option<i64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetCheatsheetPatchParams {
+    /// The repo ID
+    pub repo_id: String,
+    /// The patch ID to retrieve
+    pub patch_id: i64,
+}
+
 // --- Architect params ---
 
 #[derive(Deserialize, JsonSchema)]

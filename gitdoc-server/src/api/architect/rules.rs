@@ -6,9 +6,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::embeddings;
 use crate::error::GitdocError;
-use super::DeletedResponse;
+use super::{DeletedResponse, maybe_embed};
 
 #[derive(Deserialize)]
 pub struct ListRulesQuery {
@@ -43,15 +42,7 @@ pub async fn upsert_rule(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpsertRuleRequest>,
 ) -> Result<Json<crate::db::StackRuleRow>, GitdocError> {
-    let embedding = if let Some(ref embedder) = state.embedder {
-        let vec = embedder
-            .embed_query(&req.content)
-            .await
-            .map_err(GitdocError::Internal)?;
-        Some(embeddings::to_pgvector(&vec))
-    } else {
-        None
-    };
+    let embedding = maybe_embed(state.embedder.as_deref(), &req.content).await?;
 
     let rule_id = state
         .db
