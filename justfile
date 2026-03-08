@@ -44,6 +44,10 @@ run-server:
 run-server-release:
     GITDOC_DATABASE_URL="postgres://gitdoc:gitdoc@localhost:5433/gitdoc" cargo run -p gitdoc-server --release
 
+# Build the MCP binary in release mode for local use
+build-mcp:
+    cargo build -p gitdoc-mcp --release --message-format=json | jq -r 'select(.executable != null) | .executable'
+
 # Start the MCP server via stdio
 run-mcp:
     cargo run -p gitdoc-mcp
