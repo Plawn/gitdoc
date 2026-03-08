@@ -12,8 +12,8 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::client::GitdocClient;
-use crate::config::McpMode;
 use crate::instructions::{SIMPLE_INSTRUCTIONS, GRANULAR_INSTRUCTIONS};
+use crate::mode_filter::ModeFilter;
 use crate::params::*;
 use crate::snapshot_resolver::resolve_snapshot;
 
@@ -25,7 +25,7 @@ pub struct GitdocMcpServer {
     tool_router: ToolRouter<Self>,
     client: Arc<GitdocClient>,
     conversations: ConversationMap,
-    mode: McpMode,
+    mode_filter: Arc<ModeFilter>,
     peer: Arc<RwLock<Option<Peer<RoleServer>>>>,
 }
 
@@ -45,12 +45,12 @@ fn json_result<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpErro
 
 #[tool_router]
 impl GitdocMcpServer {
-    pub fn new(client: GitdocClient, mode: McpMode) -> Self {
+    pub fn new(client: GitdocClient, mode_filter: Arc<ModeFilter>) -> Self {
         Self {
             tool_router: Self::tool_router(),
             client: Arc::new(client),
             conversations: Arc::new(Mutex::new(HashMap::new())),
-            mode,
+            mode_filter,
             peer: Arc::new(RwLock::new(None)),
         }
     }
@@ -89,9 +89,9 @@ impl GitdocMcpServer {
 
     /// Returns an error if the current mode is Simple — used to guard granular-only tools.
     fn check_granular(&self) -> Result<(), McpError> {
-        if self.mode == McpMode::Simple {
+        if !self.mode_filter.is_granular() {
             return Err(McpError::invalid_request(
-                "This tool is not available in simple mode. Use GITDOC_MCP_MODE=granular to enable all tools.",
+                "This tool is not available in simple mode. Use set_mode(\"granular\") or GITDOC_MCP_MODE=granular to enable all tools.",
                 None,
             ));
         }
@@ -112,6 +112,47 @@ impl GitdocMcpServer {
             Ok(resp) => text_result(format!("server responded: {resp}")),
             Err(e) => err_result(format!("error: {e}")),
         }
+    }
+
+    #[tool(description = "Switch between 'simple' and 'granular' tool modes. Simple mode provides conversational tools (ask, architect_advise, etc.). Granular mode unlocks all tools for direct code navigation (get_symbol, find_references, search_symbols, etc.). Use 'granular' when you need exact source code or fine-grained control.")]
+    async fn set_mode(
+        &self,
+        params: Parameters<SetModeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let new_granular = match params.0.mode {
+            SetModeValue::Simple => false,
+            SetModeValue::Granular => true,
+        };
+
+        self.mode_filter.set_granular(new_granular);
+
+        // Notify client to re-fetch tools/list
+        if let Some(peer) = self.peer.read().await.as_ref() {
+            let _ = peer.notify_tool_list_changed().await;
+        }
+
+        let msg = if new_granular {
+            "Switched to granular mode. The tool list has been refreshed with all tools.\n\n\
+             Key tools now available:\n\
+             - get_symbol, list_symbols — inspect code symbols with full source\n\
+             - read_doc, list_docs — read documentation files\n\
+             - find_references, get_dependencies — navigate the call graph\n\
+             - search_symbols, semantic_search — targeted search\n\
+             - get_module_tree, get_public_api — high-level views\n\
+             - get_type_context, get_examples — deep type exploration\n\
+             - explain — natural language Q&A with assembled context\n\
+             - Cheatsheet, Architect KB management tools\n\n\
+             Workflow: use get_module_tree or get_public_api for overview, \
+             then get_symbol/find_references for details."
+        } else {
+            "Switched to simple mode. The tool list has been refreshed.\n\n\
+             Available tools: ping, list_repos, register_repo, index_repo, \
+             get_repo_overview, ask, conversation_reset, architect_advise, \
+             compare_libs, get_cheatsheet, set_mode.\n\n\
+             Workflow: use ask for conversational exploration, \
+             get_repo_overview for structure, get_cheatsheet for accumulated knowledge."
+        };
+        text_result(msg.to_string())
     }
 
     #[tool(description = "List all registered repositories with their IDs, names, paths, and clone URLs. Use this to discover available repos before querying them.")]
@@ -493,7 +534,7 @@ impl GitdocMcpServer {
         }
     }
 
-    #[tool(description = "Ask a question about a codebase in conversational mode. Maintains a persistent conversation per repo — follow-up questions automatically have context from previous turns. Uses semantic search + LLM to produce a synthesized answer in a SINGLE call. This is the PREFERRED tool for exploring a codebase: just ask questions naturally ('What does this crate do?', 'How is error handling done?', 'Show me the main entry point') and the conversation builds context over time. Requires both embedding provider and LLM provider on the server.")]
+    #[tool(description = "Ask a question about a codebase in conversational mode. Maintains a persistent conversation per repo — follow-up questions automatically have context from previous turns. Uses semantic search + LLM to produce a synthesized answer in a SINGLE call. This is the PREFERRED tool for exploring a codebase: just ask questions naturally ('What does this crate do?', 'How is error handling done?', 'Show me the main entry point') and the conversation builds context over time. Requires a snapshot (call register_repo then index_repo first if not done yet). Set detail_level='with_source' for verbatim source code in answers. Requires both embedding provider and LLM provider on the server.")]
     async fn ask(
         &self,
         params: Parameters<AskParams>,
@@ -523,7 +564,12 @@ impl GitdocMcpServer {
             })
         };
 
-        match self.client.converse(snapshot_id, &p.question, conversation_id, p.limit).await {
+        let detail_level = p.detail_level.as_ref().map(|dl| match dl {
+            DetailLevel::Brief => "brief",
+            DetailLevel::Detailed => "detailed",
+            DetailLevel::WithSource => "with_source",
+        });
+        match self.client.converse(snapshot_id, &p.question, conversation_id, p.limit, detail_level).await {
             Ok(resp) => {
                 // Store the conversation_id for future calls
                 {
@@ -554,7 +600,6 @@ impl GitdocMcpServer {
         &self,
         params: Parameters<GetCheatsheetParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.check_granular()?;
         let p = params.0;
         match self.client.get_cheatsheet(&p.repo_id).await {
             Ok(result) => json_result(&result),
@@ -1051,9 +1096,10 @@ impl GitdocMcpServer {
 #[tool_handler]
 impl ServerHandler for GitdocMcpServer {
     fn get_info(&self) -> ServerInfo {
-        let instructions = match self.mode {
-            McpMode::Simple => SIMPLE_INSTRUCTIONS,
-            McpMode::Granular => GRANULAR_INSTRUCTIONS,
+        let instructions = if self.mode_filter.is_granular() {
+            GRANULAR_INSTRUCTIONS
+        } else {
+            SIMPLE_INSTRUCTIONS
         };
         ServerInfo {
             capabilities: ServerCapabilities::builder()

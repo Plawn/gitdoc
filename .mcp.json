@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "gitdoc": {
+      "type": "stdio",
+      "command": "/Users/plawn/.cargo/target/debug/gitdoc-mcp",
+      "args": [
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "GITDOC_MCP_MODE": "simple",
+        "GITDOC_SERVER_URL": "http://127.0.0.1:3000"
+      }
+    }
+  }
+}

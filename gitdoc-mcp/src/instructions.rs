@@ -29,6 +29,8 @@ GitDoc indexes git repositories and lets you ask natural language questions abou
 | `conversation_reset` | Clear conversation when switching topics |
 | `architect_advise` | Ask for technology/architecture recommendations based on a knowledge base of library profiles, stack rules, project profiles, decisions, and patterns |
 | `compare_libs` | Compare libraries side-by-side with structured fit scores, pros/cons, and recommendation |
+| `set_mode` | Switch to 'granular' for direct access to source code, symbols, and references. Switch back to 'simple' for conversational exploration |
+| `get_cheatsheet` | Read the persistent repo cheatsheet — architecture, key types, patterns, gotchas |
 
 ## Tips
 

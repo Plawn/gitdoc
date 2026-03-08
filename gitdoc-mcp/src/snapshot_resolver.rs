@@ -15,7 +15,7 @@ pub async fn resolve_snapshot(
     let snapshots = detail.snapshots;
 
     if snapshots.is_empty() {
-        bail!("no snapshots found for repo '{repo_id}'");
+        bail!("No snapshot found for repo '{repo_id}'. You must call index_repo(repo_id: \"{repo_id}\") first to create a snapshot.");
     }
 
     match reference {

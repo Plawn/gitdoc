@@ -20,6 +20,8 @@ pub struct ConverseRequest {
     pub conversation_id: Option<i64>,
     /// Max semantic search hits (default: 8)
     pub limit: Option<usize>,
+    /// Detail level: "brief", "detailed", or "with_source" (default: "detailed")
+    pub detail_level: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -42,6 +44,11 @@ pub struct SourceRef {
 const CONVERSE_SYSTEM_PROMPT: &str = "You are a code intelligence assistant embedded in a codebase exploration tool. \
     You answer questions about a codebase using the provided code context (symbols, docs, signatures). \
     Be precise and reference specific types, functions, and modules. \
+    When showing code from the provided context, always cite the source file path (e.g. `src/foo.rs`). \
+    If you generate example code that is NOT from the context, mark it clearly as `[generated example]`. \
+    Prefer quoting verbatim from the provided context over paraphrasing or rewriting code. \
+    If you cannot provide the exact source code for a symbol the user is asking about, \
+    append: \"Tip: use `set_mode(\\\"granular\\\")` then `get_symbol` for the exact source code.\" \
     If the context is insufficient, say so. \
     Keep answers concise but thorough.";
 
@@ -102,6 +109,7 @@ pub async fn converse(
     };
 
     let limit = req.limit.unwrap_or(8);
+    let detail_level = req.detail_level.as_deref().unwrap_or("detailed");
 
     // Step 2: Semantic search on the question
     let mut sources: Vec<SourceRef> = Vec::new();
@@ -140,11 +148,24 @@ pub async fn converse(
                             "### {} ({}) — {}\n",
                             sym.name, sym.kind, sym.file_path
                         ));
+                        code_context.push_str(&format!("[source: {}, lines {}-{}]\n", sym.file_path, sym.line_start, sym.line_end));
                         code_context.push_str(&format!("Signature: {}\n", sym.signature));
-                        if let Some(ref doc) = sym.doc_comment {
-                            let first_lines: String =
-                                doc.lines().take(3).collect::<Vec<_>>().join("\n");
-                            code_context.push_str(&format!("Doc: {}\n", first_lines));
+
+                        if detail_level == "with_source" {
+                            // Include full source body
+                            if !sym.body.is_empty() {
+                                code_context.push_str(&format!("```\n{}\n```\n", sym.body));
+                            }
+                            if let Some(ref doc) = sym.doc_comment {
+                                code_context.push_str(&format!("Doc: {}\n", doc));
+                            }
+                        } else {
+                            if let Some(ref doc) = sym.doc_comment {
+                                let doc_lines = if detail_level == "brief" { 1 } else { 3 };
+                                let first_lines: String =
+                                    doc.lines().take(doc_lines).collect::<Vec<_>>().join("\n");
+                                code_context.push_str(&format!("Doc: {}\n", first_lines));
+                            }
                         }
 
                         // Enrich with methods for types
@@ -154,10 +175,15 @@ pub async fn converse(
                         ) {
                             let children =
                                 state.db.list_symbol_children(sym.id).await.unwrap_or_default();
+                            let method_limit = match detail_level {
+                                "brief" => 4,
+                                "with_source" => 16,
+                                _ => 8,
+                            };
                             let methods: Vec<_> = children
                                 .iter()
                                 .filter(|c| c.kind == "function")
-                                .take(8)
+                                .take(method_limit)
                                 .collect();
                             if !methods.is_empty() {
                                 code_context.push_str("Methods:\n");

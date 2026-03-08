@@ -2,6 +2,35 @@ use rmcp::schemars::{self, JsonSchema};
 use serde::Deserialize;
 
 #[derive(Deserialize, JsonSchema)]
+pub struct SetModeParams {
+    /// Tool mode: 'simple' (conversational, fewer tools) or 'granular' (full control, all tools).
+    /// Use 'granular' when you need exact source code, symbol definitions, or fine-grained navigation.
+    pub mode: SetModeValue,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub enum SetModeValue {
+    #[serde(rename = "simple")]
+    Simple,
+    #[serde(rename = "granular")]
+    Granular,
+}
+
+/// Level of detail for ask responses
+#[derive(Deserialize, JsonSchema)]
+pub enum DetailLevel {
+    /// Concise answers
+    #[serde(rename = "brief")]
+    Brief,
+    /// Thorough analysis (default)
+    #[serde(rename = "detailed")]
+    Detailed,
+    /// Include verbatim source code from the index
+    #[serde(rename = "with_source")]
+    WithSource,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct RegisterRepoParams {
     /// A unique identifier for the repository (e.g. "my-project", "tokio", "react")
     pub id: String,
@@ -253,6 +282,8 @@ pub struct AskParams {
     pub question: String,
     /// Maximum number of semantic search hits for context (default: 8)
     pub limit: Option<usize>,
+    /// Level of detail in the answer
+    pub detail_level: Option<DetailLevel>,
 }
 
 #[derive(Deserialize, JsonSchema)]

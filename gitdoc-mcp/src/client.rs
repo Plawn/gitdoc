@@ -460,6 +460,7 @@ impl GitdocClient {
         question: &str,
         conversation_id: Option<i64>,
         limit: Option<usize>,
+        detail_level: Option<&str>,
     ) -> Result<ConversationResponse> {
         let mut body = serde_json::json!({ "q": question });
         if let Some(cid) = conversation_id {
@@ -467,6 +468,9 @@ impl GitdocClient {
         }
         if let Some(l) = limit {
             body["limit"] = serde_json::Value::Number(l.into());
+        }
+        if let Some(dl) = detail_level {
+            body["detail_level"] = serde_json::Value::String(dl.to_string());
         }
         let resp = self
             .http

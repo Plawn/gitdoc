@@ -8,24 +8,25 @@ mod snapshot_resolver;
 mod types;
 
 use std::sync::Arc;
-use mcp_framework::{run, McpApp, AuthProvider, CapabilityRegistry, session::SessionStore};
+use mcp_framework::{run, McpApp, AuthProvider, CapabilityRegistry, CapabilityFilter, session::SessionStore};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cfg = config::Config::from_env();
-    let mode = cfg.mode;
+    let mode_filter = Arc::new(mode_filter::ModeFilter::new(cfg.mode));
 
+    let mf = mode_filter.clone();
     run(McpApp {
         name: "gitdoc-mcp",
         auth: AuthProvider::None,
         server_factory: move |_token_store, _session_store: SessionStore<()>| {
             let client = client::GitdocClient::new(&cfg.server_url);
-            server::GitdocMcpServer::new(client, mode)
+            server::GitdocMcpServer::new(client, mf.clone())
         },
         stdio_token_env: None,
         settings: None,
         capability_registry: Some(CapabilityRegistry::new()),
-        capability_filter: Some(Arc::new(mode_filter::ModeFilter { mode })),
+        capability_filter: Some(mode_filter as Arc<dyn CapabilityFilter>),
         session_store: None,
     })
     .await
