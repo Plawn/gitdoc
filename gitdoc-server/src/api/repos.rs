@@ -3,8 +3,10 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::CreateRepoBody;
 
 use crate::AppState;
 use crate::error::GitdocError;
@@ -31,13 +33,6 @@ pub struct FetchRepoResponse {
 pub struct DeleteResponse {
     pub deleted: bool,
     pub gc: crate::db::GcStats,
-}
-
-#[derive(Deserialize)]
-pub struct CreateRepoBody {
-    pub id: String,
-    pub name: String,
-    pub url: String,
 }
 
 pub async fn create_repo(
@@ -88,18 +83,7 @@ pub async fn get_repo(
     Ok(Json(GetRepoResponse { repo, snapshots }))
 }
 
-#[derive(Deserialize)]
-pub struct IndexBody {
-    #[serde(default = "default_commit")]
-    pub commit: String,
-    pub label: Option<String>,
-    #[serde(default)]
-    pub fetch: bool,
-}
-
-fn default_commit() -> String {
-    "HEAD".to_string()
-}
+use gitdoc_api_types::requests::IndexBody;
 
 pub async fn index_repo(
     State(state): State<Arc<AppState>>,

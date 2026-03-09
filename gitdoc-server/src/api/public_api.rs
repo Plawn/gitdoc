@@ -2,20 +2,15 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::PublicApiQuery;
 
 use crate::AppState;
 use crate::error::GitdocError;
 use crate::util::path_to_module;
-
-#[derive(Deserialize)]
-pub struct PublicApiQuery {
-    pub module_path: Option<String>,
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
-}
 
 #[derive(Serialize)]
 pub struct PublicApiEntry {

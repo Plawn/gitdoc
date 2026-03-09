@@ -2,8 +2,10 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::{SymbolQuery, RefQuery};
 
 use crate::AppState;
 use crate::db::SymbolFilters;
@@ -21,14 +23,6 @@ pub struct SnapshotSymbolResponse {
     pub children: Vec<crate::db::SymbolRow>,
     pub referenced_by_count: i64,
     pub references_count: i64,
-}
-
-#[derive(Deserialize)]
-pub struct SymbolQuery {
-    pub kind: Option<String>,
-    pub visibility: Option<String>,
-    pub file_path: Option<String>,
-    pub include_private: Option<bool>,
 }
 
 pub async fn list_symbols(
@@ -74,13 +68,6 @@ pub async fn get_snapshot_symbol(
         referenced_by_count,
         references_count,
     }))
-}
-
-#[derive(Deserialize)]
-pub struct RefQuery {
-    pub direction: Option<String>,
-    pub kind: Option<String>,
-    pub limit: Option<i64>,
 }
 
 pub async fn get_symbol_references(

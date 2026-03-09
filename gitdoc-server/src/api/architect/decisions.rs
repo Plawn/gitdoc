@@ -2,34 +2,13 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::Deserialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::{CreateDecisionRequest, ListDecisionsQuery, UpdateDecisionRequest};
 
 use crate::AppState;
 use crate::error::GitdocError;
 use super::{DeletedResponse, maybe_embed};
-
-#[derive(Deserialize)]
-pub struct CreateDecisionRequest {
-    pub project_profile_id: Option<String>,
-    pub title: String,
-    pub context: Option<String>,
-    pub choice: String,
-    pub alternatives: Option<String>,
-    pub reasoning: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct ListDecisionsQuery {
-    pub project_profile_id: Option<String>,
-    pub status: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateDecisionRequest {
-    pub outcome: Option<String>,
-    pub status: Option<String>,
-}
 
 /// POST /architect/decisions
 pub async fn create_decision(

@@ -2,8 +2,10 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::{SummarizeQuery, SummaryQuery};
 
 use crate::AppState;
 use crate::error::GitdocError;
@@ -13,11 +15,6 @@ pub struct SummarizeResponse {
     pub snapshot_id: i64,
     pub scope: String,
     pub content: String,
-}
-
-#[derive(Deserialize)]
-pub struct SummarizeQuery {
-    pub scope: String,
 }
 
 pub async fn summarize(
@@ -44,11 +41,6 @@ pub async fn summarize(
         scope: q.scope,
         content,
     }))
-}
-
-#[derive(Deserialize)]
-pub struct SummaryQuery {
-    pub scope: Option<String>,
 }
 
 /// Response for GET /summary: either a single summary or a list of all summaries.

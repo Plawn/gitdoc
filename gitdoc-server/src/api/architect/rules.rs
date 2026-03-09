@@ -2,28 +2,13 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::Deserialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::{ListRulesQuery, UpsertRuleRequest};
 
 use crate::AppState;
 use crate::error::GitdocError;
 use super::{DeletedResponse, maybe_embed};
-
-#[derive(Deserialize)]
-pub struct ListRulesQuery {
-    pub rule_type: Option<String>,
-    pub subject: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct UpsertRuleRequest {
-    pub id: Option<i64>,
-    pub rule_type: String,
-    pub subject: String,
-    pub content: String,
-    pub lib_profile_id: Option<String>,
-    pub priority: Option<i32>,
-}
 
 /// GET /architect/rules
 pub async fn list_rules(

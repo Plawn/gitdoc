@@ -2,19 +2,15 @@ use axum::{
     Json,
     extract::State,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::AdviseRequest;
 
 use crate::AppState;
 use crate::embeddings;
 use crate::error::GitdocError;
 use super::truncate_text;
-
-#[derive(Deserialize)]
-pub struct AdviseRequest {
-    pub question: String,
-    pub limit: Option<i64>,
-}
 
 #[derive(Serialize)]
 pub struct AdviseResponse {

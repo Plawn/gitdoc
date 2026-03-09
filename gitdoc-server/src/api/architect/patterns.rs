@@ -2,26 +2,13 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::Deserialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::{CreatePatternRequest, ListPatternsQuery};
 
 use crate::AppState;
 use crate::error::GitdocError;
 use super::{DeletedResponse, maybe_embed};
-
-#[derive(Deserialize)]
-pub struct CreatePatternRequest {
-    pub name: String,
-    pub category: Option<String>,
-    pub description: Option<String>,
-    pub libs_involved: Option<Vec<String>>,
-    pub pattern_text: String,
-}
-
-#[derive(Deserialize)]
-pub struct ListPatternsQuery {
-    pub category: Option<String>,
-}
 
 /// GET /architect/patterns
 pub async fn list_patterns(

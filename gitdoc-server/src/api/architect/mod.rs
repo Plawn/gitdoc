@@ -12,7 +12,9 @@ pub use decisions::*;
 pub use patterns::*;
 pub use advise::*;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+use gitdoc_api_types::requests::CompareLibsRequest;
 
 use crate::embeddings::{self, EmbeddingProvider};
 use crate::error::GitdocError;
@@ -34,12 +36,6 @@ pub(crate) async fn maybe_embed(
         }
         _ => Ok(None),
     }
-}
-
-#[derive(Deserialize)]
-pub struct CompareLibsRequest {
-    pub lib_ids: Vec<String>,
-    pub criteria: String,
 }
 
 #[derive(Serialize)]

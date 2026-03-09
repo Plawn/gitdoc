@@ -3,19 +3,15 @@ use axum::{
     extract::{Path, Query, State},
     response::sse::{Event, Sse},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
 
+use gitdoc_api_types::requests::{GenerateCheatsheetRequest, PatchListQuery};
+
 use crate::AppState;
 use crate::error::GitdocError;
-
-#[derive(Deserialize)]
-pub struct GenerateCheatsheetRequest {
-    pub snapshot_id: i64,
-    pub trigger: Option<String>,
-}
 
 #[derive(Serialize)]
 pub struct CheatsheetResponse {
@@ -32,12 +28,6 @@ pub struct GenerateCheatsheetResponse {
     pub content: String,
     pub model: String,
     pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Deserialize)]
-pub struct PatchListQuery {
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
 }
 
 /// POST /repos/{repo_id}/cheatsheet — generate or update the cheatsheet
@@ -129,17 +119,11 @@ pub async fn get_patch_handler(
     Ok(Json(patch))
 }
 
-#[derive(Deserialize)]
-pub struct StreamGenerateCheatsheetRequest {
-    pub snapshot_id: i64,
-    pub trigger: Option<String>,
-}
-
 /// POST /repos/{repo_id}/cheatsheet/stream — generate cheatsheet with SSE progress
 pub async fn stream_generate_cheatsheet_handler(
     State(state): State<Arc<AppState>>,
     Path(repo_id): Path<String>,
-    Json(req): Json<StreamGenerateCheatsheetRequest>,
+    Json(req): Json<GenerateCheatsheetRequest>,
 ) -> Result<Sse<ReceiverStream<Result<Event, Infallible>>>, GitdocError> {
     let llm_client = state.llm_client.as_ref().ok_or_else(|| {
         GitdocError::ServiceUnavailable("no LLM provider configured".into())

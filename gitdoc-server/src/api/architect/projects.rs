@@ -2,23 +2,13 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use serde::Deserialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::CreateProjectProfileRequest;
 
 use crate::AppState;
 use crate::error::GitdocError;
 use super::{DeletedResponse, maybe_embed};
-
-#[derive(Deserialize)]
-pub struct CreateProjectProfileRequest {
-    pub id: String,
-    pub repo_id: Option<String>,
-    pub name: String,
-    pub description: Option<String>,
-    pub stack: Option<serde_json::Value>,
-    pub constraints: Option<String>,
-    pub code_style: Option<String>,
-}
 
 /// GET /architect/projects
 pub async fn list_projects(

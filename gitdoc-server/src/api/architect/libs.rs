@@ -2,32 +2,13 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use serde::Deserialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::{ListLibsQuery, CreateLibRequest, GenerateLibProfileRequest};
 
 use crate::AppState;
 use crate::error::GitdocError;
 use super::{DeletedResponse, maybe_embed};
-
-#[derive(Deserialize)]
-pub struct ListLibsQuery {
-    pub category: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct CreateLibRequest {
-    pub id: String,
-    pub name: String,
-    pub category: Option<String>,
-    pub version_hint: Option<String>,
-    pub profile: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct GenerateLibProfileRequest {
-    pub repo_id: String,
-    pub snapshot_id: Option<i64>,
-}
 
 /// GET /architect/libs
 pub async fn list_libs(

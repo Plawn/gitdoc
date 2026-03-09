@@ -46,7 +46,7 @@ run-server-release:
 
 # Build the MCP binary in release mode for local use
 build-mcp:
-    cargo build -p gitdoc-mcp --release --message-format=json | jq -r 'select(.executable != null) | .executable'
+    cargo build -p gitdoc-mcp --message-format=json | jq -r 'select(.executable != null) | .executable'
 
 # Start the MCP server via stdio
 run-mcp:

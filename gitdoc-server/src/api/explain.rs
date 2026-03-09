@@ -2,23 +2,15 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::ExplainQuery;
 
 use crate::AppState;
 use crate::embeddings;
 use crate::error::GitdocError;
-
-#[derive(Deserialize)]
-pub struct ExplainQuery {
-    /// Natural language question
-    pub q: String,
-    /// If true, use LLM to synthesize a final answer from the assembled context
-    pub synthesize: Option<bool>,
-    /// Maximum number of initial semantic hits (default: 10)
-    pub limit: Option<usize>,
-}
 
 #[derive(Serialize)]
 pub struct ExplainResult {

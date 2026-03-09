@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+use gitdoc_api_types::requests;
+
 use crate::client::GitdocClient;
 use crate::instructions::{SIMPLE_INSTRUCTIONS, GRANULAR_INSTRUCTIONS};
 use crate::mode_filter::ModeFilter;
@@ -709,20 +711,21 @@ impl GitdocMcpServer {
         self.log_info(&format!("Indexed: {} symbols", index_result.symbols_count)).await;
 
         // Step 3: Create initial profile entry then generate
-        let body = serde_json::json!({
-            "id": p.id,
-            "name": p.name,
-            "category": p.category.unwrap_or_default(),
-            "version_hint": p.version_hint.unwrap_or_default(),
-        });
+        let body = requests::CreateLibRequest {
+            id: p.id.clone(),
+            name: p.name,
+            category: p.category,
+            version_hint: p.version_hint,
+            profile: None,
+        };
         let _ = self.client.create_lib_profile(&body).await;
 
         // Step 4: Generate profile from indexed repo
         self.log_info("Generating library profile with LLM...").await;
-        let gen_body = serde_json::json!({
-            "repo_id": repo_id,
-            "snapshot_id": index_result.snapshot_id,
-        });
+        let gen_body = requests::GenerateLibProfileRequest {
+            repo_id,
+            snapshot_id: Some(index_result.snapshot_id),
+        };
         match self.client.generate_lib_profile(&p.id, &gen_body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error generating profile: {e}")),
@@ -736,13 +739,13 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let body = serde_json::json!({
-            "id": p.id,
-            "name": p.name,
-            "category": p.category.unwrap_or_default(),
-            "version_hint": p.version_hint.unwrap_or_default(),
-            "profile": p.profile,
-        });
+        let body = requests::CreateLibRequest {
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            version_hint: p.version_hint,
+            profile: Some(p.profile),
+        };
         match self.client.create_lib_profile(&body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
@@ -756,10 +759,10 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let body = serde_json::json!({
-            "repo_id": p.repo_id,
-            "snapshot_id": p.snapshot_id,
-        });
+        let body = requests::GenerateLibProfileRequest {
+            repo_id: p.repo_id,
+            snapshot_id: p.snapshot_id,
+        };
         match self.client.generate_lib_profile(&p.id, &body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
@@ -786,13 +789,14 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let body = serde_json::json!({
-            "rule_type": p.rule_type,
-            "subject": p.subject,
-            "content": p.content,
-            "lib_profile_id": p.lib_profile_id,
-            "priority": p.priority.unwrap_or(0),
-        });
+        let body = requests::UpsertRuleRequest {
+            id: None,
+            rule_type: p.rule_type,
+            subject: p.subject,
+            content: p.content,
+            lib_profile_id: p.lib_profile_id,
+            priority: p.priority,
+        };
         match self.client.upsert_stack_rule(&body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
@@ -831,10 +835,10 @@ impl GitdocMcpServer {
         params: Parameters<ArchitectAdviseParams>,
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
-        let body = serde_json::json!({
-            "question": p.question,
-            "limit": p.limit.unwrap_or(5),
-        });
+        let body = requests::AdviseRequest {
+            question: p.question,
+            limit: p.limit,
+        };
         match self.client.architect_advise(&body).await {
             Ok(result) => {
                 // Format response nicely
@@ -904,15 +908,15 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let body = serde_json::json!({
-            "id": p.id,
-            "repo_id": p.repo_id,
-            "name": p.name,
-            "description": p.description.unwrap_or_default(),
-            "stack": p.stack.unwrap_or(serde_json::json!([])),
-            "constraints": p.constraints.unwrap_or_default(),
-            "code_style": p.code_style.unwrap_or_default(),
-        });
+        let body = requests::CreateProjectProfileRequest {
+            id: p.id,
+            repo_id: p.repo_id,
+            name: p.name,
+            description: p.description,
+            stack: p.stack,
+            constraints: p.constraints,
+            code_style: p.code_style,
+        };
         match self.client.create_project_profile(&body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
@@ -966,14 +970,14 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let body = serde_json::json!({
-            "project_profile_id": p.project_profile_id,
-            "title": p.title,
-            "context": p.context.unwrap_or_default(),
-            "choice": p.choice,
-            "alternatives": p.alternatives.unwrap_or_default(),
-            "reasoning": p.reasoning.unwrap_or_default(),
-        });
+        let body = requests::CreateDecisionRequest {
+            project_profile_id: p.project_profile_id,
+            title: p.title,
+            context: p.context,
+            choice: p.choice,
+            alternatives: p.alternatives,
+            reasoning: p.reasoning,
+        };
         match self.client.create_decision(&body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
@@ -1000,10 +1004,10 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let body = serde_json::json!({
-            "outcome": p.outcome,
-            "status": p.status,
-        });
+        let body = requests::UpdateDecisionRequest {
+            outcome: p.outcome,
+            status: p.status,
+        };
         match self.client.update_decision(p.id, &body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),
@@ -1018,10 +1022,10 @@ impl GitdocMcpServer {
         params: Parameters<CompareLibsParams>,
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
-        let body = serde_json::json!({
-            "lib_ids": p.lib_ids,
-            "criteria": p.criteria,
-        });
+        let body = requests::CompareLibsRequest {
+            lib_ids: p.lib_ids,
+            criteria: p.criteria,
+        };
         match self.client.compare_libs(&body).await {
             Ok(result) => {
                 let comparison = result.get("comparison").and_then(|v| v.as_str()).unwrap_or("");
@@ -1040,13 +1044,13 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         self.check_granular()?;
         let p = params.0;
-        let body = serde_json::json!({
-            "name": p.name,
-            "category": p.category.unwrap_or_default(),
-            "description": p.description.unwrap_or_default(),
-            "libs_involved": p.libs_involved.unwrap_or_default(),
-            "pattern_text": p.pattern_text,
-        });
+        let body = requests::CreatePatternRequest {
+            name: p.name,
+            category: p.category,
+            description: p.description,
+            libs_involved: p.libs_involved,
+            pattern_text: p.pattern_text,
+        };
         match self.client.create_pattern(&body).await {
             Ok(result) => json_result(&result),
             Err(e) => err_result(format!("error: {e}")),

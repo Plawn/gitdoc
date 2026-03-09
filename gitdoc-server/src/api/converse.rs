@@ -2,27 +2,17 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::ConverseRequest;
 
 use crate::AppState;
 use crate::embeddings;
 use crate::error::GitdocError;
 use super::prompt_budget::{estimate_str_tokens, estimate_tokens, build_conversation_user_message_with_budget};
 use super::condensation::{condense_history, update_cheatsheet_from_conversation};
-
-#[derive(Deserialize)]
-pub struct ConverseRequest {
-    /// Natural language question
-    pub q: String,
-    /// Existing conversation ID (omit to create a new conversation)
-    pub conversation_id: Option<i64>,
-    /// Max semantic search hits (default: 8)
-    pub limit: Option<usize>,
-    /// Detail level: "brief", "detailed", or "with_source" (default: "detailed")
-    pub detail_level: Option<String>,
-}
 
 #[derive(Serialize)]
 pub struct ConverseResponse {
@@ -362,11 +352,7 @@ pub async fn delete_conversation_handler(
     Ok(Json(DeletedResponse { deleted: true }))
 }
 
-#[derive(Deserialize)]
-pub struct PaginationParams {
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
-}
+use gitdoc_api_types::requests::PaginationParams;
 
 #[derive(Serialize)]
 pub struct PaginatedResponse<T: Serialize> {

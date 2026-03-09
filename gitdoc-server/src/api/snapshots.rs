@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -155,11 +155,7 @@ pub async fn get_doc_content(
     Ok(Json(doc))
 }
 
-#[derive(Deserialize)]
-pub struct DiffQuery {
-    pub kind: Option<String>,
-    pub include_private: Option<bool>,
-}
+use gitdoc_api_types::requests::DiffQuery;
 
 pub async fn diff_symbols(
     State(state): State<Arc<AppState>>,

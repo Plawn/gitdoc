@@ -2,19 +2,15 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::ModuleTreeQuery;
 
 use crate::AppState;
 use crate::error::GitdocError;
 use crate::util::path_to_module;
-
-#[derive(Deserialize)]
-pub struct ModuleTreeQuery {
-    pub depth: Option<usize>,
-    pub include_signatures: Option<bool>,
-}
 
 #[derive(Serialize)]
 pub struct ModuleTreeNode {

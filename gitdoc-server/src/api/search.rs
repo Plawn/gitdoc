@@ -2,26 +2,13 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use serde::Deserialize;
 use std::sync::Arc;
+
+use gitdoc_api_types::requests::{DocSearchQuery, SymbolSearchQuery, SemanticSearchQuery};
 
 use crate::AppState;
 use crate::embeddings;
 use crate::error::GitdocError;
-
-#[derive(Deserialize)]
-pub struct DocSearchQuery {
-    pub q: String,
-    pub limit: Option<usize>,
-}
-
-#[derive(Deserialize)]
-pub struct SymbolSearchQuery {
-    pub q: String,
-    pub kind: Option<String>,
-    pub visibility: Option<String>,
-    pub limit: Option<usize>,
-}
 
 pub async fn search_docs(
     State(state): State<Arc<AppState>>,
@@ -76,13 +63,6 @@ pub async fn search_symbols(
 }
 
 // --- Semantic search ---
-
-#[derive(Deserialize)]
-pub struct SemanticSearchQuery {
-    pub q: String,
-    pub scope: Option<String>,
-    pub limit: Option<usize>,
-}
 
 #[derive(serde::Serialize)]
 pub struct SemanticHit {
