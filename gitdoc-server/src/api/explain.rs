@@ -86,7 +86,10 @@ pub async fn explain(
         .await?;
 
     // Step 2: For each symbol hit, get type context (children + impls)
-    let docs = state.db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_default();
+    let docs = state.db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_else(|e| {
+        tracing::warn!(snapshot_id, error = %e, "failed to list docs for snapshot");
+        Vec::new()
+    });
 
     let mut relevant_symbols: Vec<RelevantSymbol> = Vec::new();
     let mut relevant_docs: Vec<RelevantDoc> = Vec::new();
@@ -103,7 +106,10 @@ pub async fn explain(
                 if let Ok(Some(sym)) = state.db.get_symbol_by_id(r.source_id).await {
                     // Get methods if it's a type
                     let methods = if matches!(sym.kind.as_str(), "struct" | "enum" | "trait" | "class" | "interface") {
-                        let children = state.db.list_symbol_children(sym.id).await.unwrap_or_default();
+                        let children = state.db.list_symbol_children(sym.id).await.unwrap_or_else(|e| {
+                            tracing::warn!(symbol_id = sym.id, error = %e, "failed to list symbol children");
+                            Vec::new()
+                        });
                         children
                             .iter()
                             .filter(|c| c.kind == "function")
@@ -118,7 +124,10 @@ pub async fn explain(
 
                     // Get trait relationships
                     let traits = if matches!(sym.kind.as_str(), "struct" | "enum" | "class") {
-                        let impls = state.db.get_implementations(sym.id, snapshot_id).await.unwrap_or_default();
+                        let impls = state.db.get_implementations(sym.id, snapshot_id).await.unwrap_or_else(|e| {
+                            tracing::warn!(symbol_id = sym.id, snapshot_id, error = %e, "failed to get implementations");
+                            Vec::new()
+                        });
                         impls.iter()
                             .filter(|i| i.symbol.kind == "trait" || i.symbol.kind == "interface")
                             .map(|i| i.symbol.qualified_name.clone())

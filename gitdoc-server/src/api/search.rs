@@ -120,7 +120,10 @@ pub async fn search_semantic(
         .search_embeddings_by_vector(&query_pgvec, &file_ids, &scope, limit as i64)
         .await?;
 
-    let docs = db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_default();
+    let docs = db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_else(|e| {
+        tracing::warn!(snapshot_id, error = %e, "failed to list docs for snapshot");
+        Vec::new()
+    });
     let mut hits: Vec<SemanticHit> = Vec::with_capacity(search_results.len());
     for r in &search_results {
         let mut hit = SemanticHit {

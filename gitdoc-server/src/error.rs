@@ -8,6 +8,7 @@ use serde_json::json;
 pub enum GitdocError {
     NotFound(String),
     BadRequest(String),
+    Conflict(String),
     ServiceUnavailable(String),
     Internal(anyhow::Error),
 }
@@ -17,6 +18,7 @@ impl IntoResponse for GitdocError {
         let (status, message) = match self {
             GitdocError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             GitdocError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            GitdocError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             GitdocError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             GitdocError::Internal(err) => {
                 tracing::error!(error = %err, "internal server error");

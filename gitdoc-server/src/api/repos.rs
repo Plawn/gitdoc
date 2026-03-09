@@ -15,6 +15,7 @@ use crate::git_ops;
 #[derive(Serialize)]
 pub struct CreateRepoResponse {
     pub id: String,
+    pub already_existed: bool,
 }
 
 #[derive(Serialize)]
@@ -46,6 +47,24 @@ pub async fn create_repo(
         return Err(GitdocError::BadRequest("url must be non-empty".into()));
     }
 
+    // Idempotent: if a repo with this ID already exists, return it
+    if let Some(existing) = state.db.get_repo(&body.id).await? {
+        // Same ID exists — check URL matches (or accept silently)
+        if existing.url.as_deref() == Some(&body.url) {
+            return Ok((
+                StatusCode::OK,
+                Json(CreateRepoResponse { id: body.id, already_existed: true }),
+            ));
+        }
+        // Different URL for the same ID — conflict
+        return Err(GitdocError::Conflict(format!(
+            "repo '{}' already exists with a different URL (existing: {:?}, requested: {})",
+            body.id,
+            existing.url,
+            body.url,
+        )));
+    }
+
     // Clone into repos_dir/{repo_id}
     let dest = git_ops::repo_clone_path(&state.config.repos_dir, &body.id);
     if let Err(e) = git_ops::clone_repo(&body.url, &dest).await {
@@ -62,7 +81,7 @@ pub async fn create_repo(
 
     Ok((
         StatusCode::CREATED,
-        Json(CreateRepoResponse { id: body.id }),
+        Json(CreateRepoResponse { id: body.id, already_existed: false }),
     ))
 }
 
@@ -79,7 +98,10 @@ pub async fn get_repo(
 ) -> Result<Json<GetRepoResponse>, GitdocError> {
     let repo = state.db.get_repo(&repo_id).await?
         .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
-    let snapshots = state.db.list_snapshots(&repo_id).await.unwrap_or_default();
+    let snapshots = state.db.list_snapshots(&repo_id).await.unwrap_or_else(|e| {
+        tracing::warn!(repo_id = %repo_id, error = %e, "failed to list snapshots for repo");
+        Vec::new()
+    });
     Ok(Json(GetRepoResponse { repo, snapshots }))
 }
 

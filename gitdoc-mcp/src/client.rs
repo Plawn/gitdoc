@@ -3,6 +3,7 @@ use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 use gitdoc_api_types::requests::*;
 
+use crate::config::BasicAuth;
 use crate::types::*;
 
 pub struct GitdocClient {
@@ -11,9 +12,26 @@ pub struct GitdocClient {
 }
 
 impl GitdocClient {
-    pub fn new(server_url: &str) -> Self {
+    pub fn new(server_url: &str, basic_auth: Option<&BasicAuth>) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(auth) = basic_auth {
+            use base64::Engine;
+            let encoded = base64::engine::general_purpose::STANDARD
+                .encode(format!("{}:{}", auth.username, auth.password));
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Basic {encoded}"))
+                    .expect("invalid basic auth credentials"),
+            );
+        }
+        let http = reqwest::Client::builder()
+            .default_headers(headers)
+            .timeout(std::time::Duration::from_secs(120))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
-            http: reqwest::Client::new(),
+            http,
             base_url: server_url.trim_end_matches('/').to_string(),
         }
     }

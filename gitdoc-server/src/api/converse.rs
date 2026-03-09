@@ -59,11 +59,13 @@ pub async fn converse(
     let cheatsheet_content = {
         let snapshot = state.db.get_snapshot(snapshot_id).await?
             .ok_or_else(|| GitdocError::NotFound(format!("snapshot {snapshot_id} not found")))?;
-        state.db.get_cheatsheet(&snapshot.repo_id).await
-            .ok()
-            .flatten()
-            .map(|cs| cs.content)
-            .unwrap_or_default()
+        match state.db.get_cheatsheet(&snapshot.repo_id).await {
+            Ok(cs) => cs.map(|c| c.content).unwrap_or_default(),
+            Err(e) => {
+                tracing::warn!(repo_id = %snapshot.repo_id, error = %e, "failed to load cheatsheet, proceeding without it");
+                String::new()
+            }
+        }
     };
 
     // Step 0b: Load architect context if auto mode
@@ -122,7 +124,10 @@ pub async fn converse(
         let search_hits = search_results.len();
         tracing::info!(search_ms, search_hits, "semantic search completed");
 
-        let docs = state.db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_default();
+        let docs = state.db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_else(|e| {
+            tracing::warn!(snapshot_id, error = %e, "failed to list docs for snapshot");
+            Vec::new()
+        });
         let mut seen_symbols: HashSet<i64> = HashSet::new();
 
         for r in &search_results {
@@ -164,7 +169,10 @@ pub async fn converse(
                             "struct" | "enum" | "trait" | "class" | "interface"
                         ) {
                             let children =
-                                state.db.list_symbol_children(sym.id).await.unwrap_or_default();
+                                state.db.list_symbol_children(sym.id).await.unwrap_or_else(|e| {
+                                    tracing::warn!(symbol_id = sym.id, error = %e, "failed to list symbol children");
+                                    Vec::new()
+                                });
                             let method_limit = match detail_level {
                                 "brief" => 4,
                                 "with_source" => 16,
@@ -325,7 +333,13 @@ pub async fn delete_conversation_handler(
     // Extract learnings BEFORE deleting (needs conversation turns)
     let should_update_cheatsheet = state.llm_client.is_some();
     let turns_for_learnings = if should_update_cheatsheet {
-        state.db.list_recent_turns(conversation_id, -1, 100).await.ok()
+        match state.db.list_recent_turns(conversation_id, -1, 100).await {
+            Ok(turns) => Some(turns),
+            Err(e) => {
+                tracing::warn!(conversation_id, error = %e, "failed to load turns for cheatsheet update");
+                None
+            }
+        }
     } else {
         None
     };

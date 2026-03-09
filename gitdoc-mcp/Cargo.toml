@@ -12,5 +12,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
+base64 = "0.22"
 tracing = { workspace = true }
 gitdoc-api-types = { path = "../gitdoc-api-types" }

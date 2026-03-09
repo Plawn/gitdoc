@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
         name: "gitdoc-mcp",
         auth: AuthProvider::None,
         server_factory: move |_token_store, _session_store: SessionStore<()>| {
-            let client = client::GitdocClient::new(&cfg.server_url);
+            let client = client::GitdocClient::new(&cfg.server_url, cfg.basic_auth.as_ref());
             server::GitdocMcpServer::new(client, mf.clone())
         },
         stdio_token_env: None,

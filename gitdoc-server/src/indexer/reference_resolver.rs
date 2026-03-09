@@ -4,13 +4,13 @@ use std::sync::LazyLock;
 
 use crate::db::SymbolForRef;
 
-static RE_RUST_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"use\s+crate::([^;]+);").unwrap());
-static RE_TS_NAMED_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"import\s+\{([^}]+)\}\s+from\s+['"](\.[^'"]+)['"]"#).unwrap());
-static RE_TS_DEFAULT_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"import\s+(\w+)\s+from\s+['"](\.[^'"]+)['"]"#).unwrap());
-static RE_IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[a-zA-Z_][a-zA-Z0-9_]+").unwrap());
-static RE_IMPL_FOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"impl\s+(\w+)\s+for\s+(\w+)").unwrap());
-static RE_EXTENDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"class\s+\w+\s+extends\s+(\w+)").unwrap());
-static RE_IMPLEMENTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"implements\s+([\w\s,]+)").unwrap());
+static RE_RUST_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"use\s+crate::([^;]+);").expect("BUG: invalid regex for RE_RUST_USE"));
+static RE_TS_NAMED_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"import\s+\{([^}]+)\}\s+from\s+['"](\.[^'"]+)['"]"#).expect("BUG: invalid regex for RE_TS_NAMED_IMPORT"));
+static RE_TS_DEFAULT_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"import\s+(\w+)\s+from\s+['"](\.[^'"]+)['"]"#).expect("BUG: invalid regex for RE_TS_DEFAULT_IMPORT"));
+static RE_IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[a-zA-Z_][a-zA-Z0-9_]+").expect("BUG: invalid regex for RE_IDENT"));
+static RE_IMPL_FOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"impl\s+(\w+)\s+for\s+(\w+)").expect("BUG: invalid regex for RE_IMPL_FOR"));
+static RE_EXTENDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"class\s+\w+\s+extends\s+(\w+)").expect("BUG: invalid regex for RE_EXTENDS"));
+static RE_IMPLEMENTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"implements\s+([\w\s,]+)").expect("BUG: invalid regex for RE_IMPLEMENTS"));
 
 #[derive(Debug, Clone)]
 pub struct DetectedRef {

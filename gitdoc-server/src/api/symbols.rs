@@ -46,7 +46,10 @@ pub async fn get_symbol(
 ) -> Result<Json<SymbolWithChildren>, GitdocError> {
     let symbol = state.db.get_symbol_by_id(symbol_id).await?
         .ok_or_else(|| GitdocError::NotFound("symbol not found".into()))?;
-    let children = state.db.list_symbol_children(symbol_id).await.unwrap_or_default();
+    let children = state.db.list_symbol_children(symbol_id).await.unwrap_or_else(|e| {
+        tracing::warn!(symbol_id, error = %e, "failed to list symbol children");
+        Vec::new()
+    });
     Ok(Json(SymbolWithChildren { symbol, children }))
 }
 
@@ -56,12 +59,18 @@ pub async fn get_snapshot_symbol(
 ) -> Result<Json<SnapshotSymbolResponse>, GitdocError> {
     let symbol = state.db.get_symbol_by_id(symbol_id).await?
         .ok_or_else(|| GitdocError::NotFound("symbol not found".into()))?;
-    let children = state.db.list_symbol_children(symbol_id).await.unwrap_or_default();
+    let children = state.db.list_symbol_children(symbol_id).await.unwrap_or_else(|e| {
+        tracing::warn!(symbol_id, error = %e, "failed to list symbol children");
+        Vec::new()
+    });
     let (referenced_by_count, references_count) = state
         .db
         .count_refs_for_symbol(symbol_id, snapshot_id)
         .await
-        .unwrap_or((0, 0));
+        .unwrap_or_else(|e| {
+            tracing::warn!(symbol_id, snapshot_id, error = %e, "failed to count refs for symbol");
+            (0, 0)
+        });
     Ok(Json(SnapshotSymbolResponse {
         symbol,
         children,

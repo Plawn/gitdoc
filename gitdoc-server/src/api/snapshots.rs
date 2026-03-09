@@ -87,19 +87,22 @@ pub async fn get_overview(
     let snapshot = state.db.get_snapshot(snapshot_id).await?
         .ok_or_else(|| GitdocError::NotFound("snapshot not found".into()))?;
 
-    let docs = state.db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_default();
+    let docs = state.db.list_docs_for_snapshot(snapshot_id).await.unwrap_or_else(|e| {
+        tracing::warn!(snapshot_id, error = %e, "failed to list docs for snapshot");
+        Vec::new()
+    });
     let readme = docs.iter().find(|d| {
         let lower = d.file_path.to_lowercase();
         lower == "readme.md" || lower.ends_with("/readme.md")
     });
     let readme_content = if let Some(r) = readme {
-        state
-            .db
-            .get_doc_content(snapshot_id, &r.file_path)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|dc| dc.content)
+        match state.db.get_doc_content(snapshot_id, &r.file_path).await {
+            Ok(dc) => dc.and_then(|d| d.content),
+            Err(e) => {
+                tracing::warn!(snapshot_id, file_path = %r.file_path, error = %e, "failed to load readme content");
+                None
+            }
+        }
     } else {
         None
     };
@@ -114,7 +117,10 @@ pub async fn get_overview(
             },
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            tracing::warn!(snapshot_id, error = %e, "failed to list symbols for overview");
+            Vec::new()
+        });
     let top_level_symbols: Vec<_> = symbols
         .iter()
         .filter(|s| s.parent_id.is_none())

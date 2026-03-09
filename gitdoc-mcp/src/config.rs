@@ -4,9 +4,16 @@ pub enum McpMode {
     Granular,
 }
 
+#[derive(Clone)]
+pub struct BasicAuth {
+    pub username: String,
+    pub password: String,
+}
+
 pub struct Config {
     pub server_url: String,
     pub mode: McpMode,
+    pub basic_auth: Option<BasicAuth>,
 }
 
 impl Config {
@@ -15,10 +22,20 @@ impl Config {
             Ok("granular") => McpMode::Granular,
             _ => McpMode::Simple,
         };
+        let basic_auth = match (
+            std::env::var("GITDOC_BASIC_AUTH_USER"),
+            std::env::var("GITDOC_BASIC_AUTH_PASSWORD"),
+        ) {
+            (Ok(username), Ok(password)) if !username.is_empty() => {
+                Some(BasicAuth { username, password })
+            }
+            _ => None,
+        };
         Self {
             server_url: std::env::var("GITDOC_SERVER_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
             mode,
+            basic_auth,
         }
     }
 }

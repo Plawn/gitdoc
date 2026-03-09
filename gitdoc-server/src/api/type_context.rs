@@ -53,10 +53,22 @@ pub async fn get_type_context(
 
     let symbol = symbol_res?
         .ok_or_else(|| GitdocError::NotFound("symbol not found".into()))?;
-    let children = children_res.unwrap_or_default();
-    let implementations = impls_res.unwrap_or_default();
-    let inbound = inbound_res.unwrap_or_default();
-    let outbound = outbound_res.unwrap_or_default();
+    let children = children_res.unwrap_or_else(|e| {
+        tracing::warn!(symbol_id, error = %e, "failed to list symbol children");
+        Vec::new()
+    });
+    let implementations = impls_res.unwrap_or_else(|e| {
+        tracing::warn!(symbol_id, snapshot_id, error = %e, "failed to get implementations");
+        Vec::new()
+    });
+    let inbound = inbound_res.unwrap_or_else(|e| {
+        tracing::warn!(symbol_id, snapshot_id, error = %e, "failed to get inbound refs");
+        Vec::new()
+    });
+    let outbound = outbound_res.unwrap_or_else(|e| {
+        tracing::warn!(symbol_id, snapshot_id, error = %e, "failed to get outbound refs");
+        Vec::new()
+    });
 
     let mut methods = Vec::new();
     let mut fields = Vec::new();
