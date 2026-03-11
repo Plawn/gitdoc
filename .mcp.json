@@ -8,7 +8,7 @@
         "stdio"
       ],
       "env": {
-        "GITDOC_MCP_MODE": "simple",
+        "GITDOC_MCP_MODE": "granular",
         "GITDOC_SERVER_URL": "http://127.0.0.1:3000"
       }
     }

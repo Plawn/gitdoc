@@ -76,6 +76,25 @@ pub struct SemanticSearchQuery {
 pub struct DiffQuery {
     pub kind: Option<String>,
     pub include_private: Option<bool>,
+    pub include_source: Option<bool>,
+}
+
+// ---------------------------------------------------------------------------
+// Batch symbols
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchSymbolsRequest {
+    pub ids: Vec<i64>,
+}
+
+// ---------------------------------------------------------------------------
+// Symbol context
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SymbolContextQuery {
+    pub include: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

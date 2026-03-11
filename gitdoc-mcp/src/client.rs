@@ -242,7 +242,7 @@ impl GitdocClient {
         kind: Option<&str>,
         include_private: Option<bool>,
     ) -> Result<DiffResponse> {
-        let q = DiffQuery { kind: kind.map(|s| s.to_string()), include_private };
+        let q = DiffQuery { kind: kind.map(|s| s.to_string()), include_private, include_source: None };
         self.send(self.http.get(self.url(&format!("/snapshots/{from_id}/diff/{to_id}"))).query(&q)).await
     }
 

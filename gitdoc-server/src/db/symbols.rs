@@ -207,6 +207,47 @@ impl super::Database {
         Ok(rows)
     }
 
+    pub async fn get_symbols_by_ids(&self, ids: &[i64]) -> Result<Vec<SymbolDetail>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let rows = sqlx::query_as::<_, SymbolDetail>(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.visibility, s.file_path,
+                    s.line_start, s.line_end, s.signature, s.doc_comment, s.body, s.parent_id,
+                    (SELECT COUNT(*) FROM symbols c WHERE c.parent_id = s.id) AS children_count
+             FROM symbols s
+             WHERE s.id = ANY($1)",
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn get_symbols_with_body_for_snapshot_by_qnames(
+        &self,
+        snapshot_id: i64,
+        qualified_names: &[&str],
+    ) -> Result<Vec<SymbolDetail>> {
+        if qualified_names.is_empty() {
+            return Ok(vec![]);
+        }
+        let qnames: Vec<String> = qualified_names.iter().map(|s| s.to_string()).collect();
+        let rows = sqlx::query_as::<_, SymbolDetail>(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.visibility, s.file_path,
+                    s.line_start, s.line_end, s.signature, s.doc_comment, s.body, s.parent_id,
+                    (SELECT COUNT(*) FROM symbols c WHERE c.parent_id = s.id) AS children_count
+             FROM symbols s
+             JOIN snapshot_files sf ON sf.file_id = s.file_id
+             WHERE sf.snapshot_id = $1 AND s.qualified_name = ANY($2)",
+        )
+        .bind(snapshot_id)
+        .bind(&qnames)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get_public_signatures_by_file(
         &self,
         snapshot_id: i64,

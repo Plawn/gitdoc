@@ -5,7 +5,7 @@ use axum::{
 use serde::Serialize;
 use std::sync::Arc;
 
-use gitdoc_api_types::requests::{SymbolQuery, RefQuery};
+use gitdoc_api_types::requests::{SymbolQuery, RefQuery, BatchSymbolsRequest, SymbolContextQuery};
 
 use crate::AppState;
 use crate::db::SymbolFilters;
@@ -94,6 +94,93 @@ pub async fn get_symbol_references(
     };
 
     Ok(Json(refs))
+}
+
+// ---------------------------------------------------------------------------
+// Batch get_symbols — POST /snapshots/:id/symbols/batch
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct BatchSymbolsResponse {
+    pub symbols: Vec<crate::db::SymbolDetail>,
+}
+
+pub async fn batch_get_symbols(
+    State(state): State<Arc<AppState>>,
+    Path(snapshot_id): Path<i64>,
+    Json(body): Json<BatchSymbolsRequest>,
+) -> Result<Json<BatchSymbolsResponse>, GitdocError> {
+    if body.ids.len() > 100 {
+        return Err(GitdocError::BadRequest("max 100 symbol IDs per batch".into()));
+    }
+    // Verify snapshot exists
+    state.db.get_snapshot(snapshot_id).await?
+        .ok_or_else(|| GitdocError::NotFound("snapshot not found".into()))?;
+
+    let symbols = state.db.get_symbols_by_ids(&body.ids).await?;
+    Ok(Json(BatchSymbolsResponse { symbols }))
+}
+
+// ---------------------------------------------------------------------------
+// Symbol context bundle — GET /snapshots/:id/symbols/:id/context
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct SymbolContextResponse {
+    pub symbol: crate::db::SymbolDetail,
+    pub children: Vec<crate::db::SymbolRow>,
+    pub referenced_by_count: i64,
+    pub references_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub callers: Option<Vec<crate::db::RefWithSymbol>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub callees: Option<Vec<crate::db::RefWithSymbol>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub implementations: Option<Vec<crate::db::RefWithSymbol>>,
+}
+
+pub async fn get_symbol_context(
+    State(state): State<Arc<AppState>>,
+    Path((snapshot_id, symbol_id)): Path<(i64, i64)>,
+    Query(q): Query<SymbolContextQuery>,
+) -> Result<Json<SymbolContextResponse>, GitdocError> {
+    let symbol = state.db.get_symbol_by_id(symbol_id).await?
+        .ok_or_else(|| GitdocError::NotFound("symbol not found".into()))?;
+    let children = state.db.list_symbol_children(symbol_id).await.unwrap_or_default();
+    let (referenced_by_count, references_count) = state.db.count_refs_for_symbol(symbol_id, snapshot_id).await.unwrap_or((0, 0));
+
+    let includes: Vec<&str> = q.include.as_deref().unwrap_or("callers,callees,implementations")
+        .split(',')
+        .map(|s| s.trim())
+        .collect();
+
+    let callers = if includes.contains(&"callers") {
+        Some(state.db.get_inbound_refs(symbol_id, snapshot_id, None, 50).await?)
+    } else {
+        None
+    };
+
+    let callees = if includes.contains(&"callees") {
+        Some(state.db.get_outbound_refs(symbol_id, snapshot_id, None, 50).await?)
+    } else {
+        None
+    };
+
+    let implementations = if includes.contains(&"implementations") {
+        Some(state.db.get_implementations(symbol_id, snapshot_id).await?)
+    } else {
+        None
+    };
+
+    Ok(Json(SymbolContextResponse {
+        symbol,
+        children,
+        referenced_by_count,
+        references_count,
+        callers,
+        callees,
+        implementations,
+    }))
 }
 
 pub async fn get_symbol_implementations(
