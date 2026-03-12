@@ -13,6 +13,7 @@ use mcp_framework::{run, McpApp, AuthProvider, CapabilityRegistry, CapabilityFil
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cfg = config::Config::from_env();
+    eprintln!("[gitdoc-mcp] mode={:?}, server_url={}", cfg.mode, cfg.server_url);
     let mode_filter = Arc::new(mode_filter::ModeFilter::new(cfg.mode));
 
     let mf = mode_filter.clone();

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "gitdoc": {
+    "gitdoc2": {
       "type": "stdio",
       "command": "/Users/plawn/.cargo/target/debug/gitdoc-mcp",
       "args": [

@@ -13,6 +13,7 @@ pub mod util;
 
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct AppState {
     pub db: Arc<db::Database>,
     pub search: Arc<search::SearchIndex>,
@@ -20,3 +21,4 @@ pub struct AppState {
     pub llm_client: Option<Arc<llm_ai::OpenAiCompatibleClient>>,
     pub config: Arc<config::Config>,
 }
+

@@ -12,7 +12,9 @@ pub use decisions::*;
 pub use patterns::*;
 pub use advise::*;
 
+use r2e::prelude::*;
 use serde::Serialize;
+use std::sync::Arc;
 
 use gitdoc_api_types::requests::CompareLibsRequest;
 
@@ -43,23 +45,36 @@ pub struct CompareLibsResponse {
     pub comparison: String,
 }
 
-/// POST /architect/compare
-pub async fn compare(
-    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::AppState>>,
-    axum::Json(req): axum::Json<CompareLibsRequest>,
-) -> Result<axum::Json<CompareLibsResponse>, crate::error::GitdocError> {
-    let llm_client = state.llm_client.as_ref().ok_or_else(|| {
-        crate::error::GitdocError::ServiceUnavailable("no LLM provider configured".into())
-    })?;
+#[derive(Controller)]
+#[controller(path = "/architect", state = crate::AppState)]
+pub struct ArchitectCompareController {
+    #[inject]
+    db: Arc<crate::db::Database>,
+    #[inject]
+    llm_client: Option<Arc<llm_ai::OpenAiCompatibleClient>>,
+}
 
-    let comparison = crate::architect::compare_libs(
-        &state.db,
-        llm_client,
-        &req.lib_ids,
-        &req.criteria,
-    ).await.map_err(crate::error::GitdocError::Internal)?;
+#[routes]
+impl ArchitectCompareController {
+    /// POST /architect/compare
+    #[post("/compare")]
+    async fn compare(
+        &self,
+        Json(req): Json<CompareLibsRequest>,
+    ) -> Result<Json<CompareLibsResponse>, crate::error::GitdocError> {
+        let llm_client = self.llm_client.as_ref().ok_or_else(|| {
+            crate::error::GitdocError::ServiceUnavailable("no LLM provider configured".into())
+        })?;
 
-    Ok(axum::Json(CompareLibsResponse { comparison }))
+        let comparison = crate::architect::compare_libs(
+            &self.db,
+            llm_client,
+            &req.lib_ids,
+            &req.criteria,
+        ).await.map_err(crate::error::GitdocError::Internal)?;
+
+        Ok(Json(CompareLibsResponse { comparison }))
+    }
 }
 
 pub(crate) fn truncate_text(text: &str, max_len: usize) -> String {

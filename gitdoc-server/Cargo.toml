@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 # HTTP
-axum = "0.8"
+r2e = { git = "https://github.com/Plawn/r2e.git", branch = "master", features = ["openapi"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tokio = { workspace = true }
 

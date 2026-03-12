@@ -1,7 +1,4 @@
-use axum::{
-    Json,
-    extract::{Path, Query, State},
-};
+use r2e::prelude::*;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -37,69 +34,77 @@ pub struct ModuleTreeResponse {
     tree: Vec<ModuleTreeNode>,
 }
 
-pub async fn get_module_tree(
-    State(state): State<Arc<AppState>>,
-    Path(snapshot_id): Path<i64>,
-    Query(q): Query<ModuleTreeQuery>,
-) -> Result<Json<ModuleTreeResponse>, GitdocError> {
-    let max_depth = q.depth.unwrap_or(usize::MAX);
-    let include_sigs = q.include_signatures.unwrap_or(false);
+#[derive(Controller)]
+#[controller(path = "/snapshots", state = AppState)]
+pub struct ModuleTreeController {
+    #[inject]
+    db: Arc<crate::db::Database>,
+}
 
-    let (file_infos, module_syms) = tokio::join!(
-        state.db.get_snapshot_file_paths(snapshot_id),
-        state.db.get_module_symbols(snapshot_id),
-    );
-    let file_infos = file_infos?;
-    let module_syms = module_syms?;
+#[routes]
+impl ModuleTreeController {
+    #[get("/{snapshot_id}/module_tree")]
+    async fn get_module_tree(
+        &self,
+        Path(snapshot_id): Path<i64>,
+        Query(q): Query<ModuleTreeQuery>,
+    ) -> Result<Json<ModuleTreeResponse>, GitdocError> {
+        let max_depth = q.depth.unwrap_or(usize::MAX);
+        let include_sigs = q.include_signatures.unwrap_or(false);
 
-    // Build module doc comment map
-    let mut module_docs: HashMap<String, String> = HashMap::new();
-    for m in &module_syms {
-        if let Some(ref doc) = m.doc_comment {
-            let mod_path = path_to_module(&m.file_path);
-            module_docs.insert(mod_path, doc.clone());
+        let (file_infos, module_syms) = tokio::join!(
+            self.db.get_snapshot_file_paths(snapshot_id),
+            self.db.get_module_symbols(snapshot_id),
+        );
+        let file_infos = file_infos?;
+        let module_syms = module_syms?;
+
+        let mut module_docs: HashMap<String, String> = HashMap::new();
+        for m in &module_syms {
+            if let Some(ref doc) = m.doc_comment {
+                let mod_path = path_to_module(&m.file_path);
+                module_docs.insert(mod_path, doc.clone());
+            }
         }
-    }
 
-    // Build a flat map of module_path -> (public_items, file_paths)
-    let mut module_info: BTreeMap<String, (i64, Vec<String>)> = BTreeMap::new();
-    for fi in &file_infos {
-        if fi.file_type == "other" {
-            continue;
-        }
-        let mod_path = path_to_module(&fi.file_path);
-        let entry = module_info.entry(mod_path).or_insert((0, Vec::new()));
-        entry.0 += fi.public_symbol_count;
-        entry.1.push(fi.file_path.clone());
-    }
-
-    // Optionally load signatures
-    let sig_map: HashMap<String, Vec<ModuleTreeSymbol>> = if include_sigs {
-        let all_paths: Vec<String> = file_infos.iter().map(|f| f.file_path.clone()).collect();
-        let syms = state.db.get_public_signatures_by_file(snapshot_id, &all_paths).await?;
-        let mut m: HashMap<String, Vec<ModuleTreeSymbol>> = HashMap::new();
-        for s in syms {
-            if s.kind == "impl" {
+        let mut module_info: BTreeMap<String, (i64, Vec<String>)> = BTreeMap::new();
+        for fi in &file_infos {
+            if fi.file_type == "other" {
                 continue;
             }
-            let mod_path = path_to_module(&s.file_path);
-            m.entry(mod_path).or_default().push(ModuleTreeSymbol {
-                name: s.name,
-                kind: s.kind,
-                signature: s.signature,
-            });
+            let mod_path = path_to_module(&fi.file_path);
+            let entry = module_info.entry(mod_path).or_insert((0, Vec::new()));
+            entry.0 += fi.public_symbol_count;
+            entry.1.push(fi.file_path.clone());
         }
-        m
-    } else {
-        HashMap::new()
-    };
 
-    let root = build_module_tree(&module_info, &module_docs, &sig_map, max_depth);
+        let sig_map: HashMap<String, Vec<ModuleTreeSymbol>> = if include_sigs {
+            let all_paths: Vec<String> = file_infos.iter().map(|f| f.file_path.clone()).collect();
+            let syms = self.db.get_public_signatures_by_file(snapshot_id, &all_paths).await?;
+            let mut m: HashMap<String, Vec<ModuleTreeSymbol>> = HashMap::new();
+            for s in syms {
+                if s.kind == "impl" {
+                    continue;
+                }
+                let mod_path = path_to_module(&s.file_path);
+                m.entry(mod_path).or_default().push(ModuleTreeSymbol {
+                    name: s.name,
+                    kind: s.kind,
+                    signature: s.signature,
+                });
+            }
+            m
+        } else {
+            HashMap::new()
+        };
 
-    Ok(Json(ModuleTreeResponse {
-        snapshot_id,
-        tree: root,
-    }))
+        let root = build_module_tree(&module_info, &module_docs, &sig_map, max_depth);
+
+        Ok(Json(ModuleTreeResponse {
+            snapshot_id,
+            tree: root,
+        }))
+    }
 }
 
 fn build_module_tree(

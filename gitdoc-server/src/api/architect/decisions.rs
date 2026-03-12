@@ -1,7 +1,4 @@
-use axum::{
-    Json,
-    extract::{Path, Query, State},
-};
+use r2e::prelude::*;
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::{CreateDecisionRequest, ListDecisionsQuery, UpdateDecisionRequest};
@@ -10,102 +7,119 @@ use crate::AppState;
 use crate::error::GitdocError;
 use super::{DeletedResponse, maybe_embed};
 
-/// POST /architect/decisions
-pub async fn create_decision(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<CreateDecisionRequest>,
-) -> Result<Json<crate::db::ArchDecisionRow>, GitdocError> {
-    let context = req.context.as_deref().unwrap_or("");
-    let alternatives = req.alternatives.as_deref().unwrap_or("");
-    let reasoning = req.reasoning.as_deref().unwrap_or("");
-
-    let embed_text = format!("{} {} {} {} {}", req.title, context, req.choice, reasoning, alternatives);
-
-    let embedding = maybe_embed(state.embedder.as_deref(), &embed_text).await?;
-
-    let id = state.db.create_arch_decision(
-        req.project_profile_id.as_deref(),
-        &req.title,
-        context,
-        &req.choice,
-        alternatives,
-        reasoning,
-        embedding,
-    ).await?;
-
-    let row = state.db.get_arch_decision(id).await?
-        .ok_or_else(|| GitdocError::Internal(anyhow::anyhow!("decision vanished")))?;
-
-    Ok(Json(row))
+#[derive(Controller)]
+#[controller(path = "/architect", state = AppState)]
+pub struct ArchitectDecisionController {
+    #[inject]
+    db: Arc<crate::db::Database>,
+    #[inject]
+    embedder: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
 }
 
-/// GET /architect/decisions
-pub async fn list_decisions(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<ListDecisionsQuery>,
-) -> Result<Json<Vec<crate::db::ArchDecisionRow>>, GitdocError> {
-    let decisions = state.db.list_arch_decisions(
-        q.project_profile_id.as_deref(),
-        q.status.as_deref(),
-    ).await?;
-    Ok(Json(decisions))
-}
+#[routes]
+impl ArchitectDecisionController {
+    /// POST /architect/decisions
+    #[post("/decisions")]
+    async fn create_decision(
+        &self,
+        Json(req): Json<CreateDecisionRequest>,
+    ) -> Result<Json<crate::db::ArchDecisionRow>, GitdocError> {
+        let context = req.context.as_deref().unwrap_or("");
+        let alternatives = req.alternatives.as_deref().unwrap_or("");
+        let reasoning = req.reasoning.as_deref().unwrap_or("");
 
-/// GET /architect/decisions/{id}
-pub async fn get_decision(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Result<Json<crate::db::ArchDecisionRow>, GitdocError> {
-    let row = state.db.get_arch_decision(id).await?
-        .ok_or_else(|| GitdocError::NotFound(format!("decision {id} not found")))?;
-    Ok(Json(row))
-}
+        let embed_text = format!("{} {} {} {} {}", req.title, context, req.choice, reasoning, alternatives);
 
-/// PUT /architect/decisions/{id}
-pub async fn update_decision(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-    Json(req): Json<UpdateDecisionRequest>,
-) -> Result<Json<crate::db::ArchDecisionRow>, GitdocError> {
-    let existing = state.db.get_arch_decision(id).await?
-        .ok_or_else(|| GitdocError::NotFound(format!("decision {id} not found")))?;
+        let embedding = maybe_embed(self.embedder.as_deref(), &embed_text).await?;
 
-    let new_outcome = req.outcome.as_deref().or(existing.outcome.as_deref());
-    let new_status = req.status.as_deref().unwrap_or(&existing.status);
+        let id = self.db.create_arch_decision(
+            req.project_profile_id.as_deref(),
+            &req.title,
+            context,
+            &req.choice,
+            alternatives,
+            reasoning,
+            embedding,
+        ).await?;
 
-    let embed_text = format!(
-        "{} {} {} {} {} {}",
-        existing.title, existing.context, existing.choice, existing.reasoning, existing.alternatives,
-        new_outcome.unwrap_or("")
-    );
+        let row = self.db.get_arch_decision(id).await?
+            .ok_or_else(|| GitdocError::Internal(anyhow::anyhow!("decision vanished")))?;
 
-    let embedding = maybe_embed(state.embedder.as_deref(), &embed_text).await?;
-
-    let updated = state.db.update_arch_decision(
-        id,
-        req.outcome.as_deref(),
-        Some(new_status),
-        embedding,
-    ).await?;
-
-    if !updated {
-        return Err(GitdocError::NotFound(format!("decision {id} not found")));
+        Ok(Json(row))
     }
 
-    let row = state.db.get_arch_decision(id).await?
-        .ok_or_else(|| GitdocError::Internal(anyhow::anyhow!("decision vanished")))?;
-
-    Ok(Json(row))
-}
-
-/// DELETE /architect/decisions/{id}
-pub async fn delete_decision(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Result<Json<DeletedResponse>, GitdocError> {
-    let deleted = state.db.delete_arch_decision(id).await?;
-    if !deleted {
-        return Err(GitdocError::NotFound(format!("decision {id} not found")));
+    /// GET /architect/decisions
+    #[get("/decisions")]
+    async fn list_decisions(
+        &self,
+        Query(q): Query<ListDecisionsQuery>,
+    ) -> Result<Json<Vec<crate::db::ArchDecisionRow>>, GitdocError> {
+        let decisions = self.db.list_arch_decisions(
+            q.project_profile_id.as_deref(),
+            q.status.as_deref(),
+        ).await?;
+        Ok(Json(decisions))
     }
-    Ok(Json(DeletedResponse { deleted: true }))
+
+    /// GET /architect/decisions/{id}
+    #[get("/decisions/{id}")]
+    async fn get_decision(
+        &self,
+        Path(id): Path<i64>,
+    ) -> Result<Json<crate::db::ArchDecisionRow>, GitdocError> {
+        let row = self.db.get_arch_decision(id).await?
+            .ok_or_else(|| GitdocError::NotFound(format!("decision {id} not found")))?;
+        Ok(Json(row))
+    }
+
+    /// PUT /architect/decisions/{id}
+    #[put("/decisions/{id}")]
+    async fn update_decision(
+        &self,
+        Path(id): Path<i64>,
+        Json(req): Json<UpdateDecisionRequest>,
+    ) -> Result<Json<crate::db::ArchDecisionRow>, GitdocError> {
+        let existing = self.db.get_arch_decision(id).await?
+            .ok_or_else(|| GitdocError::NotFound(format!("decision {id} not found")))?;
+
+        let new_outcome = req.outcome.as_deref().or(existing.outcome.as_deref());
+        let new_status = req.status.as_deref().unwrap_or(&existing.status);
+
+        let embed_text = format!(
+            "{} {} {} {} {} {}",
+            existing.title, existing.context, existing.choice, existing.reasoning, existing.alternatives,
+            new_outcome.unwrap_or("")
+        );
+
+        let embedding = maybe_embed(self.embedder.as_deref(), &embed_text).await?;
+
+        let updated = self.db.update_arch_decision(
+            id,
+            req.outcome.as_deref(),
+            Some(new_status),
+            embedding,
+        ).await?;
+
+        if !updated {
+            return Err(GitdocError::NotFound(format!("decision {id} not found")));
+        }
+
+        let row = self.db.get_arch_decision(id).await?
+            .ok_or_else(|| GitdocError::Internal(anyhow::anyhow!("decision vanished")))?;
+
+        Ok(Json(row))
+    }
+
+    /// DELETE /architect/decisions/{id}
+    #[delete("/decisions/{id}")]
+    async fn delete_decision(
+        &self,
+        Path(id): Path<i64>,
+    ) -> Result<Json<DeletedResponse>, GitdocError> {
+        let deleted = self.db.delete_arch_decision(id).await?;
+        if !deleted {
+            return Err(GitdocError::NotFound(format!("decision {id} not found")));
+        }
+        Ok(Json(DeletedResponse { deleted: true }))
+    }
 }

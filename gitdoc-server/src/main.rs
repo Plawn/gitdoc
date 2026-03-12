@@ -1,5 +1,5 @@
 use gitdoc_server::{AppState, config, db, embeddings, search};
-use axum::{Router, routing::{get, post, delete}};
+use r2e::prelude::*;
 use tower_http::trace::TraceLayer;
 use std::sync::Arc;
 
@@ -71,83 +71,72 @@ async fn main() -> anyhow::Result<()> {
 
     let bind_addr = cfg.bind_addr;
 
-    let state = Arc::new(AppState {
+    let state = AppState {
         db: Arc::new(database),
         search: Arc::new(search_index),
         embedder,
         llm_client,
         config: Arc::new(cfg),
-    });
+    };
 
-    use gitdoc_server::api::{repos, snapshots, symbols, public_api, module_tree, type_context, summaries, converse, cheatsheet, architect};
-    use gitdoc_server::api::search as search_api;
+    use gitdoc_server::api::{
+        repos::RepoController,
+        cheatsheet::CheatsheetController,
+        snapshots::SnapshotController,
+        symbols::{SnapshotSymbolController, SymbolController},
+        search::{SearchController, AdminController},
+        converse::ConverseController,
+        summaries::SummaryController,
+        explain::ExplainController,
+        public_api::PublicApiController,
+        module_tree::ModuleTreeController,
+        type_context::TypeContextController,
+        architect::{
+            ArchitectLibController,
+            ArchitectRuleController,
+            ArchitectAdviseController,
+            ArchitectCompareController,
+            ArchitectProjectController,
+            ArchitectDecisionController,
+            ArchitectPatternController,
+        },
+    };
 
-    let repo_routes = Router::new()
-        .route("/repos", post(repos::create_repo).get(repos::list_repos))
-        .route("/repos/{repo_id}", get(repos::get_repo).delete(repos::delete_repo))
-        .route("/repos/{repo_id}/index", post(repos::index_repo))
-        .route("/repos/{repo_id}/fetch", post(repos::fetch_repo))
-        .route("/repos/{repo_id}/cheatsheet", post(cheatsheet::generate_cheatsheet_handler).get(cheatsheet::get_cheatsheet_handler))
-        .route("/repos/{repo_id}/cheatsheet/stream", post(cheatsheet::stream_generate_cheatsheet_handler))
-        .route("/repos/{repo_id}/cheatsheet/patches", get(cheatsheet::list_patches_handler))
-        .route("/repos/{repo_id}/cheatsheet/patches/{patch_id}", get(cheatsheet::get_patch_handler));
+    // Health check as a plain route
+    let health_route = Router::new()
+        .route("/health", r2e::http::routing::get(|| async { "ok" }));
 
-    let snapshot_routes = Router::new()
-        .route("/snapshots/{snapshot_id}/overview", get(snapshots::get_overview))
-        .route("/snapshots/{snapshot_id}/docs", get(snapshots::list_docs))
-        .route("/snapshots/{snapshot_id}/docs/{*path}", get(snapshots::get_doc_content))
-        .route("/snapshots/{snapshot_id}/symbols", get(symbols::list_symbols))
-        .route("/snapshots/{snapshot_id}/symbols/batch", post(symbols::batch_get_symbols))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}", get(symbols::get_snapshot_symbol))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/references", get(symbols::get_symbol_references))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/implementations", get(symbols::get_symbol_implementations))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/context", get(symbols::get_symbol_context))
-        .route("/snapshots/{snapshot_id}/public_api", get(public_api::get_public_api))
-        .route("/snapshots/{snapshot_id}/module_tree", get(module_tree::get_module_tree))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/type_context", get(type_context::get_type_context))
-        .route("/snapshots/{snapshot_id}/symbols/{symbol_id}/examples", get(type_context::get_examples))
-        .route("/snapshots/{snapshot_id}/summarize", post(summaries::summarize))
-        .route("/snapshots/{snapshot_id}/summary", get(summaries::get_summary))
-        .route("/snapshots/{snapshot_id}/explain", get(gitdoc_server::api::explain::explain))
-        .route("/snapshots/{snapshot_id}/converse", post(converse::converse))
-        .route("/snapshots/{snapshot_id}/conversations", get(converse::list_conversations_handler))
-        .route("/snapshots/{snapshot_id}/conversations/{conversation_id}", delete(converse::delete_conversation_handler))
-        .route("/snapshots/{snapshot_id}/conversations/{conversation_id}/turns", get(converse::list_turns_handler))
-        .route("/snapshots/{from_id}/diff/{to_id}", get(snapshots::diff_symbols))
-        .route("/snapshots/{from_id}/diff/{to_id}/summarize", post(snapshots::diff_summarize))
-        .route("/snapshots/{snapshot_id}", delete(snapshots::delete_snapshot))
-        .route("/snapshots/{snapshot_id}/search/docs", get(search_api::search_docs))
-        .route("/snapshots/{snapshot_id}/search/symbols", get(search_api::search_symbols))
-        .route("/snapshots/{snapshot_id}/search/semantic", get(search_api::search_semantic));
-
-    let architect_routes = Router::new()
-        .route("/architect/libs", get(architect::list_libs).post(architect::create_lib))
-        .route("/architect/libs/{id}", get(architect::get_lib).delete(architect::delete_lib))
-        .route("/architect/libs/{id}/generate", post(architect::generate_lib_profile_handler))
-        .route("/architect/rules", get(architect::list_rules).post(architect::upsert_rule))
-        .route("/architect/rules/{id}", delete(architect::delete_rule))
-        .route("/architect/advise", post(architect::advise))
-        .route("/architect/compare", post(architect::compare))
-        .route("/architect/projects", get(architect::list_projects).post(architect::create_project))
-        .route("/architect/projects/{id}", get(architect::get_project).delete(architect::delete_project))
-        .route("/architect/decisions", get(architect::list_decisions).post(architect::create_decision))
-        .route("/architect/decisions/{id}", get(architect::get_decision).put(architect::update_decision).delete(architect::delete_decision))
-        .route("/architect/patterns", get(architect::list_patterns).post(architect::create_pattern))
-        .route("/architect/patterns/{id}", get(architect::get_pattern).delete(architect::delete_pattern));
-
-    let app = Router::new()
-        .route("/health", get(|| async { "ok" }))
-        .merge(repo_routes)
-        .merge(snapshot_routes)
-        .route("/symbols/{symbol_id}", get(symbols::get_symbol))
-        .merge(architect_routes)
-        .route("/admin/gc", post(search_api::gc))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
-    tracing::info!("gitdoc-server listening on {}", bind_addr);
-    axum::serve(listener, app).await?;
+    AppBuilder::new()
+        .with_state(state)
+        // Controllers
+        .register_controller::<RepoController>()
+        .register_controller::<CheatsheetController>()
+        .register_controller::<SnapshotController>()
+        .register_controller::<SnapshotSymbolController>()
+        .register_controller::<SymbolController>()
+        .register_controller::<SearchController>()
+        .register_controller::<AdminController>()
+        .register_controller::<ConverseController>()
+        .register_controller::<SummaryController>()
+        .register_controller::<ExplainController>()
+        .register_controller::<PublicApiController>()
+        .register_controller::<ModuleTreeController>()
+        .register_controller::<TypeContextController>()
+        .register_controller::<ArchitectLibController>()
+        .register_controller::<ArchitectRuleController>()
+        .register_controller::<ArchitectAdviseController>()
+        .register_controller::<ArchitectCompareController>()
+        .register_controller::<ArchitectProjectController>()
+        .register_controller::<ArchitectDecisionController>()
+        .register_controller::<ArchitectPatternController>()
+        // Plain routes
+        .merge_router(health_route)
+        // Layers
+        .with_layer(TraceLayer::new_for_http())
+        // Serve
+        .serve(&bind_addr.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     Ok(())
 }

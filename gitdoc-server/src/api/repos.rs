@@ -1,8 +1,4 @@
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use r2e::prelude::*;
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -36,147 +32,160 @@ pub struct DeleteResponse {
     pub gc: crate::db::GcStats,
 }
 
-pub async fn create_repo(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<CreateRepoBody>,
-) -> Result<(StatusCode, Json<CreateRepoResponse>), GitdocError> {
-    if body.id.is_empty() || body.name.is_empty() {
-        return Err(GitdocError::BadRequest("id and name must be non-empty".into()));
-    }
-    if body.url.is_empty() {
-        return Err(GitdocError::BadRequest("url must be non-empty".into()));
-    }
-
-    // Idempotent: if a repo with this ID already exists, return it
-    if let Some(existing) = state.db.get_repo(&body.id).await? {
-        // Same ID exists — check URL matches (or accept silently)
-        if existing.url.as_deref() == Some(&body.url) {
-            return Ok((
-                StatusCode::OK,
-                Json(CreateRepoResponse { id: body.id, already_existed: true }),
-            ));
-        }
-        // Different URL for the same ID — conflict
-        return Err(GitdocError::Conflict(format!(
-            "repo '{}' already exists with a different URL (existing: {:?}, requested: {})",
-            body.id,
-            existing.url,
-            body.url,
-        )));
-    }
-
-    // Clone into repos_dir/{repo_id}
-    let dest = git_ops::repo_clone_path(&state.config.repos_dir, &body.id);
-    if let Err(e) = git_ops::clone_repo(&body.url, &dest).await {
-        // Clean up partial clone
-        let _ = tokio::fs::remove_dir_all(&dest).await;
-        return Err(GitdocError::BadRequest(format!("clone failed: {e}")));
-    }
-    let repo_path = dest.to_string_lossy().into_owned();
-
-    state
-        .db
-        .insert_repo(&body.id, &repo_path, &body.name, Some(&body.url))
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(CreateRepoResponse { id: body.id, already_existed: false }),
-    ))
-}
-
-pub async fn list_repos(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<crate::db::RepoRow>>, GitdocError> {
-    let repos = state.db.list_repos().await?;
-    Ok(Json(repos))
-}
-
-pub async fn get_repo(
-    State(state): State<Arc<AppState>>,
-    Path(repo_id): Path<String>,
-) -> Result<Json<GetRepoResponse>, GitdocError> {
-    let repo = state.db.get_repo(&repo_id).await?
-        .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
-    let snapshots = state.db.list_snapshots(&repo_id).await.unwrap_or_else(|e| {
-        tracing::warn!(repo_id = %repo_id, error = %e, "failed to list snapshots for repo");
-        Vec::new()
-    });
-    Ok(Json(GetRepoResponse { repo, snapshots }))
-}
-
 use gitdoc_api_types::requests::IndexBody;
 
-pub async fn index_repo(
-    State(state): State<Arc<AppState>>,
-    Path(repo_id): Path<String>,
-    Json(body): Json<IndexBody>,
-) -> Result<Json<crate::indexer::pipeline::IndexResult>, GitdocError> {
-    let repo = state.db.get_repo(&repo_id).await?
-        .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
+#[derive(Controller)]
+#[controller(path = "/repos", state = AppState)]
+pub struct RepoController {
+    #[inject]
+    db: Arc<crate::db::Database>,
+    #[inject]
+    search: Arc<crate::search::SearchIndex>,
+    #[inject]
+    embedder: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    #[inject]
+    config: Arc<crate::config::Config>,
+}
 
-    // Auto-fetch if requested
-    if body.fetch {
+#[routes]
+impl RepoController {
+    #[post("/")]
+    async fn create_repo(
+        &self,
+        Json(body): Json<CreateRepoBody>,
+    ) -> Result<(StatusCode, Json<CreateRepoResponse>), GitdocError> {
+        if body.id.is_empty() || body.name.is_empty() {
+            return Err(GitdocError::BadRequest("id and name must be non-empty".into()));
+        }
+        if body.url.is_empty() {
+            return Err(GitdocError::BadRequest("url must be non-empty".into()));
+        }
+
+        if let Some(existing) = self.db.get_repo(&body.id).await? {
+            if existing.url.as_deref() == Some(&body.url) {
+                return Ok((
+                    StatusCode::OK,
+                    Json(CreateRepoResponse { id: body.id, already_existed: true }),
+                ));
+            }
+            return Err(GitdocError::Conflict(format!(
+                "repo '{}' already exists with a different URL (existing: {:?}, requested: {})",
+                body.id,
+                existing.url,
+                body.url,
+            )));
+        }
+
+        let dest = git_ops::repo_clone_path(&self.config.repos_dir, &body.id);
+        if let Err(e) = git_ops::clone_repo(&body.url, &dest).await {
+            let _ = tokio::fs::remove_dir_all(&dest).await;
+            return Err(GitdocError::BadRequest(format!("clone failed: {e}")));
+        }
+        let repo_path = dest.to_string_lossy().into_owned();
+
+        self.db
+            .insert_repo(&body.id, &repo_path, &body.name, Some(&body.url))
+            .await?;
+
+        Ok((
+            StatusCode::CREATED,
+            Json(CreateRepoResponse { id: body.id, already_existed: false }),
+        ))
+    }
+
+    #[get("/")]
+    async fn list_repos(
+        &self,
+    ) -> Result<Json<Vec<crate::db::RepoRow>>, GitdocError> {
+        let repos = self.db.list_repos().await?;
+        Ok(Json(repos))
+    }
+
+    #[get("/{repo_id}")]
+    async fn get_repo(
+        &self,
+        Path(repo_id): Path<String>,
+    ) -> Result<Json<GetRepoResponse>, GitdocError> {
+        let repo = self.db.get_repo(&repo_id).await?
+            .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
+        let snapshots = self.db.list_snapshots(&repo_id).await.unwrap_or_else(|e| {
+            tracing::warn!(repo_id = %repo_id, error = %e, "failed to list snapshots for repo");
+            Vec::new()
+        });
+        Ok(Json(GetRepoResponse { repo, snapshots }))
+    }
+
+    #[post("/{repo_id}/index")]
+    async fn index_repo(
+        &self,
+        Path(repo_id): Path<String>,
+        Json(body): Json<IndexBody>,
+    ) -> Result<Json<crate::indexer::pipeline::IndexResult>, GitdocError> {
+        let repo = self.db.get_repo(&repo_id).await?
+            .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
+
+        if body.fetch {
+            git_ops::fetch_and_reset(std::path::Path::new(&repo.path))
+                .await
+                .map_err(|e| GitdocError::BadRequest(format!("fetch failed: {e}")))?;
+        }
+
+        let db = self.db.clone();
+        let search = self.search.clone();
+        let embedder = self.embedder.clone();
+        let exclusion_patterns = self.config.exclusion_patterns.clone();
+        let repo_path = repo.path.clone();
+        let commit = body.commit.clone();
+        let label = body.label.clone();
+        let rid = repo_id.clone();
+
+        let result = crate::indexer::pipeline::run_indexation(
+            &db,
+            &search,
+            &rid,
+            std::path::Path::new(&repo_path),
+            &commit,
+            label.as_deref(),
+            embedder,
+            &exclusion_patterns,
+        )
+        .await?;
+
+        Ok(Json(result))
+    }
+
+    #[post("/{repo_id}/fetch")]
+    async fn fetch_repo(
+        &self,
+        Path(repo_id): Path<String>,
+    ) -> Result<Json<FetchRepoResponse>, GitdocError> {
+        let repo = self.db.get_repo(&repo_id).await?
+            .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
+
         git_ops::fetch_and_reset(std::path::Path::new(&repo.path))
             .await
             .map_err(|e| GitdocError::BadRequest(format!("fetch failed: {e}")))?;
+
+        Ok(Json(FetchRepoResponse { fetched: true, repo_id }))
     }
 
-    let db = Arc::clone(&state.db);
-    let search = Arc::clone(&state.search);
-    let embedder = state.embedder.clone();
-    let exclusion_patterns = state.config.exclusion_patterns.clone();
-    let repo_path = repo.path.clone();
-    let commit = body.commit.clone();
-    let label = body.label.clone();
-    let rid = repo_id.clone();
+    #[delete("/{repo_id}")]
+    async fn delete_repo(
+        &self,
+        Path(repo_id): Path<String>,
+    ) -> Result<Json<DeleteResponse>, GitdocError> {
+        let repo = self.db.get_repo(&repo_id).await?;
 
-    let result = crate::indexer::pipeline::run_indexation(
-        &db,
-        &search,
-        &rid,
-        std::path::Path::new(&repo_path),
-        &commit,
-        label.as_deref(),
-        embedder,
-        &exclusion_patterns,
-    )
-    .await?;
+        let existed = self.db.delete_repo(&repo_id).await?;
+        if !existed {
+            return Err(GitdocError::NotFound("repo not found".into()));
+        }
 
-    Ok(Json(result))
-}
+        if let Some(repo) = repo {
+            let _ = tokio::fs::remove_dir_all(&repo.path).await;
+        }
 
-pub async fn fetch_repo(
-    State(state): State<Arc<AppState>>,
-    Path(repo_id): Path<String>,
-) -> Result<Json<FetchRepoResponse>, GitdocError> {
-    let repo = state.db.get_repo(&repo_id).await?
-        .ok_or_else(|| GitdocError::NotFound("repo not found".into()))?;
-
-    git_ops::fetch_and_reset(std::path::Path::new(&repo.path))
-        .await
-        .map_err(|e| GitdocError::BadRequest(format!("fetch failed: {e}")))?;
-
-    Ok(Json(FetchRepoResponse { fetched: true, repo_id }))
-}
-
-pub async fn delete_repo(
-    State(state): State<Arc<AppState>>,
-    Path(repo_id): Path<String>,
-) -> Result<Json<DeleteResponse>, GitdocError> {
-    // Look up repo before deleting to check if it has a URL (cloned dir to clean up)
-    let repo = state.db.get_repo(&repo_id).await?;
-
-    let existed = state.db.delete_repo(&repo_id).await?;
-    if !existed {
-        return Err(GitdocError::NotFound("repo not found".into()));
+        let gc = self.db.gc_orphans().await?;
+        Ok(Json(DeleteResponse { deleted: true, gc }))
     }
-
-    // Clean up cloned directory
-    if let Some(repo) = repo {
-        let _ = tokio::fs::remove_dir_all(&repo.path).await;
-    }
-
-    let gc = state.db.gc_orphans().await?;
-    Ok(Json(DeleteResponse { deleted: true, gc }))
 }
