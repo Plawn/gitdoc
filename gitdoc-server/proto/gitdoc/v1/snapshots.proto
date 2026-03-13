@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package gitdoc.v1;
+
+import "gitdoc/v1/common.proto";
+
+service SnapshotService {
+  rpc GetOverview (GetOverviewRequest) returns (GetOverviewResponse);
+  rpc ListDocs (ListDocsRequest) returns (ListDocsResponse);
+  rpc GetDocContent (GetDocContentRequest) returns (GetDocContentResponse);
+  rpc DiffSnapshots (DiffSnapshotsRequest) returns (DiffSnapshotsResponse);
+  rpc DiffSummarize (DiffSummarizeRequest) returns (DiffSummarizeResponse);
+  rpc DeleteSnapshot (DeleteSnapshotRequest) returns (DeleteSnapshotResponse);
+}
+
+message GetOverviewRequest {
+  int64 snapshot_id = 1;
+}
+
+message GetOverviewResponse {
+  Snapshot snapshot = 1;
+  string readme = 2;
+  repeated Doc docs = 3;
+  repeated OverviewSymbol top_level_symbols = 4;
+}
+
+message ListDocsRequest {
+  int64 snapshot_id = 1;
+}
+
+message ListDocsResponse {
+  repeated Doc docs = 1;
+}
+
+message GetDocContentRequest {
+  int64 snapshot_id = 1;
+  string path = 2;
+}
+
+message GetDocContentResponse {
+  DocContent doc = 1;
+}
+
+message DiffSnapshotsRequest {
+  int64 from_id = 1;
+  int64 to_id = 2;
+  string kind = 3;
+  bool include_private = 4;
+  bool include_source = 5;
+}
+
+message DiffSnapshotsResponse {
+  int64 from_snapshot = 1;
+  int64 to_snapshot = 2;
+  repeated DiffSymbolEntry added = 3;
+  repeated DiffSymbolEntry removed = 4;
+  repeated ModifiedSymbol modified = 5;
+  DiffSummary summary = 6;
+}
+
+message DiffSummarizeRequest {
+  int64 from_id = 1;
+  int64 to_id = 2;
+  string kind = 3;
+  bool include_private = 4;
+}
+
+message DiffSummarizeResponse {
+  int64 from_snapshot = 1;
+  int64 to_snapshot = 2;
+  string changelog = 3;
+  DiffSummary stats = 4;
+}
+
+message DeleteSnapshotRequest {
+  int64 snapshot_id = 1;
+}
+
+message DeleteSnapshotResponse {
+  bool deleted = 1;
+}

@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package gitdoc.v1;
+
+import "gitdoc/v1/common.proto";
+
+service AnalysisService {
+  rpc GetPublicApi (GetPublicApiRequest) returns (GetPublicApiResponse);
+  rpc GetModuleTree (GetModuleTreeRequest) returns (GetModuleTreeResponse);
+  rpc Explain (ExplainRequest) returns (ExplainResponse);
+  rpc Summarize (SummarizeRequest) returns (SummarizeResponse);
+  rpc GetSummary (GetSummaryRequest) returns (GetSummaryResponse);
+}
+
+message GetPublicApiRequest {
+  int64 snapshot_id = 1;
+  string module_path = 2;
+  int64 limit = 3;
+  int64 offset = 4;
+}
+
+message GetPublicApiResponse {
+  int64 snapshot_id = 1;
+  string module_path = 2;
+  map<string, PublicApiModuleEntries> modules = 3;
+  uint64 total_items = 4;
+}
+
+message PublicApiModuleEntries {
+  repeated PublicApiEntry entries = 1;
+}
+
+message GetModuleTreeRequest {
+  int64 snapshot_id = 1;
+  uint64 depth = 2;
+  bool include_signatures = 3;
+}
+
+message GetModuleTreeResponse {
+  int64 snapshot_id = 1;
+  repeated ModuleTreeNode tree = 2;
+}
+
+message ExplainRequest {
+  int64 snapshot_id = 1;
+  string q = 2;
+  bool synthesize = 3;
+  uint64 limit = 4;
+}
+
+message ExplainResponse {
+  string query = 1;
+  repeated RelevantSymbol relevant_symbols = 2;
+  repeated RelevantDoc relevant_docs = 3;
+  string synthesis = 4;
+}
+
+message SummarizeRequest {
+  int64 snapshot_id = 1;
+  string scope = 2;
+}
+
+message SummarizeResponse {
+  int64 snapshot_id = 1;
+  string scope = 2;
+  string content = 3;
+}
+
+message GetSummaryRequest {
+  int64 snapshot_id = 1;
+  string scope = 2;
+}
+
+message GetSummaryResponse {
+  repeated SummaryRow summaries = 1;
+}

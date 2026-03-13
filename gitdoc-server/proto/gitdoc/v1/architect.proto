@@ -1,0 +1,282 @@
+syntax = "proto3";
+
+package gitdoc.v1;
+
+import "gitdoc/v1/common.proto";
+
+service ArchitectService {
+  // Libs
+  rpc ListLibs (ListLibsRequest) returns (ListLibsResponse);
+  rpc CreateLib (CreateLibRequest) returns (CreateLibResponse);
+  rpc GetLib (GetLibRequest) returns (GetLibResponse);
+  rpc DeleteLib (DeleteLibRequest) returns (DeleteLibResponse);
+  rpc GenerateLibProfile (GenerateLibProfileRequest) returns (GenerateLibProfileResponse);
+
+  // Rules
+  rpc ListRules (ListRulesRequest) returns (ListRulesResponse);
+  rpc UpsertRule (UpsertRuleRequest) returns (UpsertRuleResponse);
+  rpc DeleteRule (DeleteRuleRequest) returns (DeleteRuleResponse);
+
+  // Advise / Compare
+  rpc Advise (AdviseRequest) returns (AdviseResponse);
+  rpc CompareLibs (CompareLibsRequest) returns (CompareLibsResponse);
+
+  // Projects
+  rpc ListProjects (ListProjectsRequest) returns (ListProjectsResponse);
+  rpc CreateProject (CreateProjectRequest) returns (CreateProjectResponse);
+  rpc GetProject (GetProjectRequest) returns (GetProjectResponse);
+  rpc DeleteProject (DeleteProjectRequest) returns (DeleteProjectResponse);
+
+  // Decisions
+  rpc CreateDecision (CreateDecisionRequest) returns (CreateDecisionResponse);
+  rpc ListDecisions (ListDecisionsRequest) returns (ListDecisionsResponse);
+  rpc GetDecision (GetDecisionRequest) returns (GetDecisionResponse);
+  rpc UpdateDecision (UpdateDecisionRequest) returns (UpdateDecisionResponse);
+  rpc DeleteDecision (DeleteDecisionRequest) returns (DeleteDecisionResponse);
+
+  // Patterns
+  rpc ListPatterns (ListPatternsRequest) returns (ListPatternsResponse);
+  rpc CreatePattern (CreatePatternRequest) returns (CreatePatternResponse);
+  rpc GetPattern (GetPatternRequest) returns (GetPatternResponse);
+  rpc DeletePattern (DeletePatternRequest) returns (DeletePatternResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Libs
+// ---------------------------------------------------------------------------
+
+message ListLibsRequest {
+  string category = 1;
+}
+
+message ListLibsResponse {
+  repeated LibProfileSummary libs = 1;
+}
+
+message CreateLibRequest {
+  string id = 1;
+  string name = 2;
+  string category = 3;
+  string version_hint = 4;
+  string profile = 5;
+}
+
+message CreateLibResponse {
+  LibProfileRow lib = 1;
+}
+
+message GetLibRequest {
+  string id = 1;
+}
+
+message GetLibResponse {
+  LibProfileRow lib = 1;
+}
+
+message DeleteLibRequest {
+  string id = 1;
+}
+
+message DeleteLibResponse {
+  bool deleted = 1;
+}
+
+message GenerateLibProfileRequest {
+  string lib_id = 1;
+  string repo_id = 2;
+  int64 snapshot_id = 3;
+}
+
+message GenerateLibProfileResponse {
+  LibProfileRow lib = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Rules
+// ---------------------------------------------------------------------------
+
+message ListRulesRequest {
+  string rule_type = 1;
+  string subject = 2;
+}
+
+message ListRulesResponse {
+  repeated StackRuleRow rules = 1;
+}
+
+message UpsertRuleRequest {
+  int64 id = 1;
+  string rule_type = 2;
+  string subject = 3;
+  string content = 4;
+  string lib_profile_id = 5;
+  int32 priority = 6;
+}
+
+message UpsertRuleResponse {
+  StackRuleRow rule = 1;
+}
+
+message DeleteRuleRequest {
+  int64 id = 1;
+}
+
+message DeleteRuleResponse {
+  bool deleted = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Advise / Compare
+// ---------------------------------------------------------------------------
+
+message AdviseRequest {
+  string question = 1;
+  int64 limit = 2;
+}
+
+message AdviseResponse {
+  string answer = 1;
+  repeated ArchitectSearchResult relevant_libs = 2;
+  repeated ArchitectSearchResult relevant_rules = 3;
+}
+
+message CompareLibsRequest {
+  repeated string lib_ids = 1;
+  string criteria = 2;
+}
+
+message CompareLibsResponse {
+  string comparison = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+message ListProjectsRequest {}
+
+message ListProjectsResponse {
+  repeated ProjectProfileSummary projects = 1;
+}
+
+message CreateProjectRequest {
+  string id = 1;
+  string repo_id = 2;
+  string name = 3;
+  string description = 4;
+  string stack = 5;  // JSON string
+  string constraints = 6;
+  string code_style = 7;
+}
+
+message CreateProjectResponse {
+  ProjectProfileRow project = 1;
+}
+
+message GetProjectRequest {
+  string id = 1;
+}
+
+message GetProjectResponse {
+  ProjectProfileRow project = 1;
+}
+
+message DeleteProjectRequest {
+  string id = 1;
+}
+
+message DeleteProjectResponse {
+  bool deleted = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Decisions
+// ---------------------------------------------------------------------------
+
+message CreateDecisionRequest {
+  string project_profile_id = 1;
+  string title = 2;
+  string context = 3;
+  string choice = 4;
+  string alternatives = 5;
+  string reasoning = 6;
+}
+
+message CreateDecisionResponse {
+  ArchDecisionRow decision = 1;
+}
+
+message ListDecisionsRequest {
+  string project_profile_id = 1;
+  string status = 2;
+}
+
+message ListDecisionsResponse {
+  repeated ArchDecisionRow decisions = 1;
+}
+
+message GetDecisionRequest {
+  int64 id = 1;
+}
+
+message GetDecisionResponse {
+  ArchDecisionRow decision = 1;
+}
+
+message UpdateDecisionRequest {
+  int64 id = 1;
+  string outcome = 2;
+  string status = 3;
+}
+
+message UpdateDecisionResponse {
+  ArchDecisionRow decision = 1;
+}
+
+message DeleteDecisionRequest {
+  int64 id = 1;
+}
+
+message DeleteDecisionResponse {
+  bool deleted = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Patterns
+// ---------------------------------------------------------------------------
+
+message ListPatternsRequest {
+  string category = 1;
+}
+
+message ListPatternsResponse {
+  repeated ArchPatternRow patterns = 1;
+}
+
+message CreatePatternRequest {
+  string name = 1;
+  string category = 2;
+  string description = 3;
+  repeated string libs_involved = 4;
+  string pattern_text = 5;
+}
+
+message CreatePatternResponse {
+  ArchPatternRow pattern = 1;
+}
+
+message GetPatternRequest {
+  int64 id = 1;
+}
+
+message GetPatternResponse {
+  ArchPatternRow pattern = 1;
+}
+
+message DeletePatternRequest {
+  int64 id = 1;
+}
+
+message DeletePatternResponse {
+  bool deleted = 1;
+}

@@ -10,6 +10,7 @@ pub mod llm;
 pub mod cheatsheet;
 pub mod architect;
 pub mod util;
+pub mod grpc;
 
 use std::sync::Arc;
 

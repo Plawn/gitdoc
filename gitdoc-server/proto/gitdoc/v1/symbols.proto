@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package gitdoc.v1;
+
+import "gitdoc/v1/common.proto";
+
+service SymbolService {
+  rpc ListSymbols (ListSymbolsRequest) returns (ListSymbolsResponse);
+  rpc GetSnapshotSymbol (GetSnapshotSymbolRequest) returns (GetSnapshotSymbolResponse);
+  rpc GetSymbol (GetSymbolRequest) returns (GetSymbolResponse);
+  rpc GetSymbolReferences (GetSymbolReferencesRequest) returns (GetSymbolReferencesResponse);
+  rpc BatchGetSymbols (BatchGetSymbolsRequest) returns (BatchGetSymbolsResponse);
+  rpc GetSymbolContext (GetSymbolContextRequest) returns (GetSymbolContextResponse);
+  rpc GetImplementations (GetImplementationsRequest) returns (GetImplementationsResponse);
+  rpc GetTypeContext (GetTypeContextRequest) returns (GetTypeContextResponse);
+  rpc GetExamples (GetExamplesRequest) returns (GetExamplesResponse);
+}
+
+message ListSymbolsRequest {
+  int64 snapshot_id = 1;
+  string kind = 2;
+  string visibility = 3;
+  string file_path = 4;
+  bool include_private = 5;
+}
+
+message ListSymbolsResponse {
+  repeated Symbol symbols = 1;
+}
+
+message GetSnapshotSymbolRequest {
+  int64 snapshot_id = 1;
+  int64 symbol_id = 2;
+}
+
+message GetSnapshotSymbolResponse {
+  SymbolDetail symbol = 1;
+  repeated Symbol children = 2;
+  int64 referenced_by_count = 3;
+  int64 references_count = 4;
+}
+
+message GetSymbolRequest {
+  int64 symbol_id = 1;
+}
+
+message GetSymbolResponse {
+  SymbolDetail symbol = 1;
+  repeated Symbol children = 2;
+}
+
+message GetSymbolReferencesRequest {
+  int64 snapshot_id = 1;
+  int64 symbol_id = 2;
+  string direction = 3;
+  string kind = 4;
+  int64 limit = 5;
+}
+
+message GetSymbolReferencesResponse {
+  repeated RefWithSymbol refs = 1;
+}
+
+message BatchGetSymbolsRequest {
+  int64 snapshot_id = 1;
+  repeated int64 ids = 2;
+}
+
+message BatchGetSymbolsResponse {
+  repeated SymbolDetail symbols = 1;
+}
+
+message GetSymbolContextRequest {
+  int64 snapshot_id = 1;
+  int64 symbol_id = 2;
+  string include = 3;
+}
+
+message GetSymbolContextResponse {
+  SymbolDetail symbol = 1;
+  repeated Symbol children = 2;
+  int64 referenced_by_count = 3;
+  int64 references_count = 4;
+  repeated RefWithSymbol callers = 5;
+  repeated RefWithSymbol callees = 6;
+  repeated RefWithSymbol implementations = 7;
+}
+
+message GetImplementationsRequest {
+  int64 snapshot_id = 1;
+  int64 symbol_id = 2;
+}
+
+message GetImplementationsResponse {
+  repeated RefWithSymbol implementations = 1;
+}
+
+message GetTypeContextRequest {
+  int64 snapshot_id = 1;
+  int64 symbol_id = 2;
+}
+
+message GetTypeContextResponse {
+  SymbolDetail symbol = 1;
+  repeated Symbol methods = 2;
+  repeated Symbol fields = 3;
+  repeated RefWithSymbol traits_implemented = 4;
+  repeated RefWithSymbol implementors = 5;
+  UsedBy used_by = 6;
+  DependsOn depends_on = 7;
+}
+
+message GetExamplesRequest {
+  int64 snapshot_id = 1;
+  int64 symbol_id = 2;
+}
+
+message GetExamplesResponse {
+  int64 symbol_id = 1;
+  string symbol_name = 2;
+  repeated CodeExample examples = 3;
+}

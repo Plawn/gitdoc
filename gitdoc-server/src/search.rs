@@ -129,7 +129,13 @@ impl SearchIndex {
             tantivy::directory::MmapDirectory::open(&doc_dir)?,
             doc_schema,
         )?;
-        let doc_writer = doc_index.writer(50_000_000)?;
+        let doc_writer = doc_index.writer(50_000_000)
+            .map_err(|e| anyhow::anyhow!(
+                "Failed to acquire search index lock at {}: {}. \
+                 Is another gitdoc-server process already running? \
+                 Kill it first or use a different GITDOC_INDEX_PATH.",
+                doc_dir.display(), e
+            ))?;
         let doc_reader = doc_index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -140,7 +146,13 @@ impl SearchIndex {
             tantivy::directory::MmapDirectory::open(&sym_dir)?,
             sym_schema,
         )?;
-        let sym_writer = sym_index.writer(50_000_000)?;
+        let sym_writer = sym_index.writer(50_000_000)
+            .map_err(|e| anyhow::anyhow!(
+                "Failed to acquire search index lock at {}: {}. \
+                 Is another gitdoc-server process already running? \
+                 Kill it first or use a different GITDOC_INDEX_PATH.",
+                sym_dir.display(), e
+            ))?;
         let sym_reader = sym_index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)

@@ -1,0 +1,423 @@
+syntax = "proto3";
+
+package gitdoc.v1;
+
+// ---------------------------------------------------------------------------
+// Repos
+// ---------------------------------------------------------------------------
+
+message Repo {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  string created_at = 4;
+}
+
+message RepoSummary {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  string created_at = 4;
+  int64 snapshot_count = 5;
+  string latest_snapshot_label = 6;
+  string latest_snapshot_commit = 7;
+  string latest_snapshot_indexed_at = 8;
+}
+
+message Snapshot {
+  int64 id = 1;
+  string repo_id = 2;
+  string commit_sha = 3;
+  string label = 4;
+  string indexed_at = 5;
+  string status = 6;
+  string stats = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Docs
+// ---------------------------------------------------------------------------
+
+message Doc {
+  int64 id = 1;
+  string file_path = 2;
+  string title = 3;
+}
+
+message DocContent {
+  int64 id = 1;
+  string file_path = 2;
+  string title = 3;
+  string content = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Symbols
+// ---------------------------------------------------------------------------
+
+message Symbol {
+  int64 id = 1;
+  string name = 2;
+  string qualified_name = 3;
+  string kind = 4;
+  string visibility = 5;
+  string file_path = 6;
+  int64 line_start = 7;
+  int64 line_end = 8;
+  string signature = 9;
+  string doc_comment = 10;
+  int64 parent_id = 11;
+}
+
+message SymbolDetail {
+  int64 id = 1;
+  string name = 2;
+  string qualified_name = 3;
+  string kind = 4;
+  string visibility = 5;
+  string file_path = 6;
+  int64 line_start = 7;
+  int64 line_end = 8;
+  string signature = 9;
+  string doc_comment = 10;
+  string body = 11;
+  int64 parent_id = 12;
+  int64 children_count = 13;
+}
+
+// ---------------------------------------------------------------------------
+// References
+// ---------------------------------------------------------------------------
+
+message RefWithSymbol {
+  string ref_kind = 1;
+  Symbol symbol = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+message DocSearchResult {
+  string file_path = 1;
+  string title = 2;
+  repeated string snippets = 3;
+}
+
+message SymbolSearchResult {
+  int64 symbol_id = 1;
+  string name = 2;
+  string qualified_name = 3;
+  string kind = 4;
+  string visibility = 5;
+  string signature = 6;
+  string doc_comment = 7;
+  string file_path = 8;
+  float score = 9;
+}
+
+message SemanticDocHit {
+  string file_path = 1;
+  string title = 2;
+}
+
+message SemanticSymbolHit {
+  string name = 1;
+  string qualified_name = 2;
+  string kind = 3;
+  string signature = 4;
+  string file_path = 5;
+  int64 line_start = 6;
+}
+
+message SemanticSearchResult {
+  string source_type = 1;
+  int64 source_id = 2;
+  double score = 3;
+  string text = 4;
+  SemanticDocHit doc = 5;
+  SemanticSymbolHit symbol = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Diff
+// ---------------------------------------------------------------------------
+
+message DiffSymbolEntry {
+  string name = 1;
+  string qualified_name = 2;
+  string kind = 3;
+  string visibility = 4;
+  string file_path = 5;
+  string signature = 6;
+  string body = 7;
+}
+
+message DiffSigVis {
+  string signature = 1;
+  string visibility = 2;
+  string body = 3;
+}
+
+message ModifiedSymbol {
+  string qualified_name = 1;
+  string kind = 2;
+  repeated string changes = 3;
+  DiffSigVis from = 4;
+  DiffSigVis to = 5;
+}
+
+message DiffSummary {
+  uint64 added = 1;
+  uint64 removed = 2;
+  uint64 modified = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Overview
+// ---------------------------------------------------------------------------
+
+message OverviewSymbol {
+  int64 id = 1;
+  string name = 2;
+  string qualified_name = 3;
+  string kind = 4;
+  string visibility = 5;
+  string file_path = 6;
+  string signature = 7;
+  string doc_comment = 8;
+}
+
+// ---------------------------------------------------------------------------
+// Public API / Module tree
+// ---------------------------------------------------------------------------
+
+message PublicApiMethod {
+  int64 id = 1;
+  string name = 2;
+  string signature = 3;
+  string doc_comment = 4;
+}
+
+message PublicApiEntry {
+  int64 id = 1;
+  string name = 2;
+  string qualified_name = 3;
+  string kind = 4;
+  string visibility = 5;
+  string file_path = 6;
+  string signature = 7;
+  string doc_comment = 8;
+  repeated PublicApiMethod methods = 9;
+}
+
+message ModuleTreeSymbol {
+  string name = 1;
+  string kind = 2;
+  string signature = 3;
+}
+
+message ModuleTreeNode {
+  string name = 1;
+  string path = 2;
+  string doc_comment = 3;
+  int64 public_items = 4;
+  repeated ModuleTreeNode children = 5;
+  repeated ModuleTreeSymbol symbols = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Type context / Examples
+// ---------------------------------------------------------------------------
+
+message UsedBy {
+  repeated RefWithSymbol callers = 1;
+  repeated RefWithSymbol type_users = 2;
+}
+
+message DependsOn {
+  repeated RefWithSymbol types = 1;
+  repeated RefWithSymbol calls = 2;
+}
+
+message CodeExample {
+  string language = 1;
+  string code = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Explain
+// ---------------------------------------------------------------------------
+
+message MethodInfo {
+  string name = 1;
+  string signature = 2;
+}
+
+message RelevantSymbol {
+  int64 id = 1;
+  string name = 2;
+  string qualified_name = 3;
+  string kind = 4;
+  string signature = 5;
+  string doc_comment = 6;
+  string file_path = 7;
+  double score = 8;
+  repeated MethodInfo methods = 9;
+  repeated string traits = 10;
+}
+
+message RelevantDoc {
+  string file_path = 1;
+  string title = 2;
+  string snippet = 3;
+  double score = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Conversation
+// ---------------------------------------------------------------------------
+
+message SourceRef {
+  string kind = 1;
+  string name = 2;
+  string file_path = 3;
+  int64 symbol_id = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Summarize
+// ---------------------------------------------------------------------------
+
+message SummaryRow {
+  int64 id = 1;
+  int64 snapshot_id = 2;
+  string scope = 3;
+  string content = 4;
+  string model = 5;
+  string created_at = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Cheatsheet
+// ---------------------------------------------------------------------------
+
+message CheatsheetPatchMeta {
+  int64 id = 1;
+  string repo_id = 2;
+  int64 snapshot_id = 3;
+  string change_summary = 4;
+  string trigger = 5;
+  string model = 6;
+  string created_at = 7;
+}
+
+message CheatsheetPatchRow {
+  int64 id = 1;
+  string repo_id = 2;
+  int64 snapshot_id = 3;
+  string prev_content = 4;
+  string new_content = 5;
+  string change_summary = 6;
+  string trigger = 7;
+  string model = 8;
+  string created_at = 9;
+}
+
+// ---------------------------------------------------------------------------
+// Architect
+// ---------------------------------------------------------------------------
+
+message LibProfileSummary {
+  string id = 1;
+  string name = 2;
+  string category = 3;
+  string version_hint = 4;
+  string source = 5;
+  string updated_at = 6;
+}
+
+message LibProfileRow {
+  string id = 1;
+  string name = 2;
+  string repo_id = 3;
+  string category = 4;
+  string version_hint = 5;
+  string profile = 6;
+  string source = 7;
+  string model = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message StackRuleRow {
+  int64 id = 1;
+  string rule_type = 2;
+  string subject = 3;
+  string content = 4;
+  string lib_profile_id = 5;
+  int32 priority = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ArchitectSearchResult {
+  string id = 1;
+  string kind = 2;
+  string text = 3;
+  double score = 4;
+}
+
+message ProjectProfileRow {
+  string id = 1;
+  string repo_id = 2;
+  string name = 3;
+  string description = 4;
+  string stack = 5;  // JSON string
+  string constraints = 6;
+  string code_style = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message ProjectProfileSummary {
+  string id = 1;
+  string name = 2;
+  string repo_id = 3;
+  string updated_at = 4;
+}
+
+message ArchDecisionRow {
+  int64 id = 1;
+  string project_profile_id = 2;
+  string title = 3;
+  string context = 4;
+  string choice = 5;
+  string alternatives = 6;
+  string reasoning = 7;
+  string outcome = 8;
+  string status = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message ArchPatternRow {
+  int64 id = 1;
+  string name = 2;
+  string category = 3;
+  string description = 4;
+  repeated string libs_involved = 5;
+  string pattern_text = 6;
+  string source = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+// ---------------------------------------------------------------------------
+// Pagination (shared)
+// ---------------------------------------------------------------------------
+
+message Pagination {
+  int64 limit = 1;
+  int64 offset = 2;
+}

@@ -1,5 +1,6 @@
 use gitdoc_server::{AppState, config, db, embeddings, search};
 use r2e::prelude::*;
+use r2e::r2e_grpc::{GrpcServer, AppBuilderGrpcExt};
 use r2e::r2e_openapi::{OpenApiConfig, OpenApiPlugin};
 use tower_http::trace::TraceLayer;
 use std::sync::Arc;
@@ -103,11 +104,23 @@ async fn main() -> anyhow::Result<()> {
         },
     };
 
+    use gitdoc_server::grpc::{
+        repos::RepoGrpcService,
+        snapshots::SnapshotGrpcService,
+        symbols::SymbolGrpcService,
+        search::SearchGrpcService,
+        analysis::AnalysisGrpcService,
+        converse::ConverseGrpcService,
+        cheatsheet::CheatsheetGrpcService,
+        architect::ArchitectGrpcService,
+    };
+
     // Health check as a plain route
     let health_route = Router::new()
         .route("/health", r2e::http::routing::get(|| async { "ok" }));
 
     AppBuilder::new()
+        .plugin(GrpcServer::multiplexed())
         .with_state(state)
         .with(OpenApiPlugin::new(
             OpenApiConfig::new("GitDoc API", "0.1.0")
@@ -135,6 +148,15 @@ async fn main() -> anyhow::Result<()> {
         .register_controller::<ArchitectProjectController>()
         .register_controller::<ArchitectDecisionController>()
         .register_controller::<ArchitectPatternController>()
+        // gRPC services
+        .register_grpc_service::<RepoGrpcService>()
+        .register_grpc_service::<SnapshotGrpcService>()
+        .register_grpc_service::<SymbolGrpcService>()
+        .register_grpc_service::<SearchGrpcService>()
+        .register_grpc_service::<AnalysisGrpcService>()
+        .register_grpc_service::<ConverseGrpcService>()
+        .register_grpc_service::<CheatsheetGrpcService>()
+        .register_grpc_service::<ArchitectGrpcService>()
         // Plain routes
         .merge_router(health_route)
         // Layers

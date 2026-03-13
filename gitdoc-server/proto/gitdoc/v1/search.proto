@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package gitdoc.v1;
+
+import "gitdoc/v1/common.proto";
+
+service SearchService {
+  rpc SearchDocs (SearchDocsRequest) returns (SearchDocsResponse);
+  rpc SearchSymbols (SearchSymbolsRequest) returns (SearchSymbolsResponse);
+  rpc SemanticSearch (SemanticSearchRequest) returns (SemanticSearchResponse);
+  rpc GarbageCollect (GarbageCollectRequest) returns (GarbageCollectResponse);
+}
+
+message SearchDocsRequest {
+  int64 snapshot_id = 1;
+  string q = 2;
+  uint64 limit = 3;
+}
+
+message SearchDocsResponse {
+  repeated DocSearchResult results = 1;
+}
+
+message SearchSymbolsRequest {
+  int64 snapshot_id = 1;
+  string q = 2;
+  string kind = 3;
+  string visibility = 4;
+  uint64 limit = 5;
+}
+
+message SearchSymbolsResponse {
+  repeated SymbolSearchResult results = 1;
+}
+
+message SemanticSearchRequest {
+  int64 snapshot_id = 1;
+  string q = 2;
+  string scope = 3;
+  uint64 limit = 4;
+}
+
+message SemanticSearchResponse {
+  repeated SemanticSearchResult results = 1;
+}
+
+message GarbageCollectRequest {}
+
+message GarbageCollectResponse {
+  int64 files_removed = 1;
+  int64 symbols_removed = 2;
+  int64 docs_removed = 3;
+  int64 refs_removed = 4;
+  int64 embeddings_removed = 5;
+}

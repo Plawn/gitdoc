@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package gitdoc.v1;
+
+import "gitdoc/v1/common.proto";
+
+service RepoService {
+  rpc CreateRepo (CreateRepoRequest) returns (CreateRepoResponse);
+  rpc ListRepos (ListReposRequest) returns (ListReposResponse);
+  rpc GetRepo (GetRepoRequest) returns (GetRepoResponse);
+  rpc DeleteRepo (DeleteRepoRequest) returns (DeleteRepoResponse);
+  rpc IndexRepo (IndexRepoRequest) returns (IndexRepoResponse);
+  rpc FetchRepo (FetchRepoRequest) returns (FetchRepoResponse);
+}
+
+message CreateRepoRequest {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+}
+
+message CreateRepoResponse {
+  string id = 1;
+  bool already_existed = 2;
+}
+
+message ListReposRequest {}
+
+message ListReposResponse {
+  repeated RepoSummary repos = 1;
+}
+
+message GetRepoRequest {
+  string repo_id = 1;
+}
+
+message GetRepoResponse {
+  Repo repo = 1;
+  repeated Snapshot snapshots = 2;
+}
+
+message DeleteRepoRequest {
+  string repo_id = 1;
+}
+
+message DeleteRepoResponse {
+  bool deleted = 1;
+}
+
+message IndexRepoRequest {
+  string repo_id = 1;
+  string commit = 2;
+  string label = 3;
+  bool fetch = 4;
+}
+
+message IndexRepoResponse {
+  int64 snapshot_id = 1;
+  int64 files_scanned = 2;
+  int64 docs_count = 3;
+  int64 symbols_count = 4;
+  uint64 refs_count = 5;
+  uint64 embeddings_count = 6;
+  uint64 duration_ms = 7;
+}
+
+message FetchRepoRequest {
+  string repo_id = 1;
+}
+
+message FetchRepoResponse {
+  bool fetched = 1;
+  string repo_id = 2;
+}
