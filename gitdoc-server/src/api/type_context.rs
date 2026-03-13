@@ -6,6 +6,7 @@ use crate::AppState;
 use crate::db::{RefWithSymbol, SymbolDetail, SymbolRow};
 use crate::error::GitdocError;
 
+/// JSON shape matches `gitdoc_api_types::responses::TypeContextResponse`.
 #[derive(Serialize)]
 pub struct TypeContextResponse {
     pub symbol: SymbolDetail,
@@ -17,18 +18,21 @@ pub struct TypeContextResponse {
     pub depends_on: DependsOn,
 }
 
+/// JSON shape matches `gitdoc_api_types::responses::UsedBy`.
 #[derive(Serialize)]
 pub struct UsedBy {
     pub callers: Vec<RefWithSymbol>,
     pub type_users: Vec<RefWithSymbol>,
 }
 
+/// JSON shape matches `gitdoc_api_types::responses::DependsOn`.
 #[derive(Serialize)]
 pub struct DependsOn {
     pub types: Vec<RefWithSymbol>,
     pub calls: Vec<RefWithSymbol>,
 }
 
+/// JSON shape matches `gitdoc_api_types::responses::ExamplesResponse`.
 #[derive(Serialize)]
 pub struct ExamplesResponse {
     pub symbol_id: i64,

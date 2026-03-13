@@ -3220,7 +3220,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 [[package]]
 name = "r2e"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "r2e-core",
  "r2e-events",
@@ -3233,7 +3233,7 @@ dependencies = [
 [[package]]
 name = "r2e-cache"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "bytes",
  "dashmap",
@@ -3242,7 +3242,7 @@ dependencies = [
 [[package]]
 name = "r2e-core"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "axum",
  "bytes",
@@ -3266,7 +3266,7 @@ dependencies = [
 [[package]]
 name = "r2e-events"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "serde",
  "tokio",
@@ -3275,7 +3275,7 @@ dependencies = [
 [[package]]
 name = "r2e-macros"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -3286,7 +3286,7 @@ dependencies = [
 [[package]]
 name = "r2e-openapi"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "r2e-core",
  "schemars 1.2.1",
@@ -3297,7 +3297,7 @@ dependencies = [
 [[package]]
 name = "r2e-security"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "jsonwebtoken",
  "r2e-core",
@@ -3311,7 +3311,7 @@ dependencies = [
 [[package]]
 name = "r2e-utils"
 version = "0.1.0"
-source = "git+https://github.com/Plawn/r2e.git?branch=master#9dcdbc4c6373cfeafe450b0b07d7e3857ce7ca0d"
+source = "git+https://github.com/Plawn/r2e.git?tag=v0.2.25#4971a39bac838b1c1e397de4d7377ffefae75732"
 dependencies = [
  "bytes",
  "r2e-cache",

@@ -2,39 +2,16 @@ use r2e::prelude::*;
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::{DocSearchQuery, SymbolSearchQuery, SemanticSearchQuery};
+use gitdoc_api_types::responses::{
+    SemanticSearchResult as SemanticHit,
+    SemanticDocHit as DocMeta,
+    SemanticSymbolHit as SymbolMeta,
+};
 
 use crate::AppState;
 use crate::db;
 use crate::embeddings;
 use crate::error::GitdocError;
-
-#[derive(serde::Serialize)]
-pub struct SemanticHit {
-    source_type: String,
-    source_id: i64,
-    score: f64,
-    text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    doc: Option<DocMeta>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    symbol: Option<SymbolMeta>,
-}
-
-#[derive(serde::Serialize)]
-pub struct DocMeta {
-    file_path: String,
-    title: Option<String>,
-}
-
-#[derive(serde::Serialize)]
-pub struct SymbolMeta {
-    name: String,
-    qualified_name: String,
-    kind: String,
-    signature: String,
-    file_path: String,
-    line_start: i64,
-}
 
 #[derive(Controller)]
 #[controller(path = "/snapshots", state = AppState)]

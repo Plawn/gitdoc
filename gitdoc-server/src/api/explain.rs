@@ -1,52 +1,13 @@
 use r2e::prelude::*;
-use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::ExplainQuery;
+use gitdoc_api_types::responses::{ExplainResult, RelevantSymbol, MethodInfo, RelevantDoc};
 
 use crate::AppState;
 use crate::embeddings;
 use crate::error::GitdocError;
-
-#[derive(Serialize)]
-pub struct ExplainResult {
-    query: String,
-    relevant_symbols: Vec<RelevantSymbol>,
-    relevant_docs: Vec<RelevantDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    synthesis: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct RelevantSymbol {
-    id: i64,
-    name: String,
-    qualified_name: String,
-    kind: String,
-    signature: String,
-    doc_comment: Option<String>,
-    file_path: String,
-    score: f64,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    methods: Vec<MethodInfo>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    traits: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct MethodInfo {
-    name: String,
-    signature: String,
-}
-
-#[derive(Serialize)]
-pub struct RelevantDoc {
-    file_path: String,
-    title: Option<String>,
-    snippet: String,
-    score: f64,
-}
 
 #[derive(Controller)]
 #[controller(path = "/snapshots", state = AppState)]

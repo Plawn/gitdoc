@@ -1,30 +1,15 @@
 use r2e::prelude::*;
-use serde::Serialize;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use gitdoc_api_types::requests::{GenerateCheatsheetRequest, PatchListQuery};
+use gitdoc_api_types::responses::{
+    CheatsheetResponse, GenerateCheatsheetResponse,
+};
 
 use crate::AppState;
 use crate::error::GitdocError;
-
-#[derive(Serialize)]
-pub struct CheatsheetResponse {
-    pub repo_id: String,
-    pub content: String,
-    pub model: String,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Serialize)]
-pub struct GenerateCheatsheetResponse {
-    pub repo_id: String,
-    pub patch_id: i64,
-    pub content: String,
-    pub model: String,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
 
 #[derive(Controller)]
 #[controller(path = "/repos", state = AppState)]
@@ -75,7 +60,7 @@ impl CheatsheetController {
             patch_id,
             content: cs.content,
             model: cs.model,
-            updated_at: cs.updated_at,
+            updated_at: cs.updated_at.to_rfc3339(),
         }))
     }
 
@@ -95,7 +80,7 @@ impl CheatsheetController {
             repo_id: cs.repo_id,
             content: cs.content,
             model: cs.model,
-            updated_at: cs.updated_at,
+            updated_at: cs.updated_at.to_rfc3339(),
         }))
     }
 

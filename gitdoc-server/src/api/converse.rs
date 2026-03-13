@@ -1,32 +1,18 @@
 use r2e::prelude::*;
-use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::ConverseRequest;
+use gitdoc_api_types::responses::{
+    ConversationResponse as ConverseResponse, SourceRef, PaginatedResponse,
+    DeleteResponse as DeletedResponse,
+};
 
 use crate::AppState;
 use crate::embeddings;
 use crate::error::GitdocError;
 use super::prompt_budget::{estimate_str_tokens, estimate_tokens, build_conversation_user_message_with_budget};
 use super::condensation::{condense_history, update_cheatsheet_from_conversation};
-
-#[derive(Serialize)]
-pub struct ConverseResponse {
-    pub conversation_id: i64,
-    pub answer: String,
-    pub sources: Vec<SourceRef>,
-    pub turn_index: i32,
-}
-
-#[derive(Serialize, Clone)]
-pub struct SourceRef {
-    pub kind: String,
-    pub name: String,
-    pub file_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub symbol_id: Option<i64>,
-}
 
 const CONVERSE_SYSTEM_PROMPT: &str = "You are a code intelligence assistant embedded in a codebase exploration tool. \
     You answer questions about a codebase using the provided code context (symbols, docs, signatures). \
@@ -39,20 +25,7 @@ const CONVERSE_SYSTEM_PROMPT: &str = "You are a code intelligence assistant embe
     If the context is insufficient, say so. \
     Keep answers concise but thorough.";
 
-#[derive(Serialize)]
-pub struct DeletedResponse {
-    pub deleted: bool,
-}
-
 use gitdoc_api_types::requests::PaginationParams;
-
-#[derive(Serialize)]
-pub struct PaginatedResponse<T: Serialize> {
-    pub items: Vec<T>,
-    pub total: i64,
-    pub limit: i64,
-    pub offset: i64,
-}
 
 #[derive(Controller)]
 #[controller(path = "/snapshots", state = AppState)]

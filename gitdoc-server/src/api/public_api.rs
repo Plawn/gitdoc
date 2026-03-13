@@ -1,43 +1,13 @@
 use r2e::prelude::*;
-use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::PublicApiQuery;
+use gitdoc_api_types::responses::{PublicApiEntry, PublicApiMethod, PublicApiResponse};
 
 use crate::AppState;
 use crate::error::GitdocError;
 use crate::util::path_to_module;
-
-#[derive(Serialize)]
-pub struct PublicApiEntry {
-    id: i64,
-    name: String,
-    qualified_name: String,
-    kind: String,
-    visibility: String,
-    file_path: String,
-    signature: String,
-    doc_comment: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    methods: Vec<PublicApiMethod>,
-}
-
-#[derive(Serialize)]
-pub struct PublicApiMethod {
-    id: i64,
-    name: String,
-    signature: String,
-    doc_comment: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct PublicApiResponse {
-    snapshot_id: i64,
-    module_path: Option<String>,
-    modules: BTreeMap<String, Vec<PublicApiEntry>>,
-    total_items: usize,
-}
 
 #[derive(Controller)]
 #[controller(path = "/snapshots", state = AppState)]

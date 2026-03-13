@@ -2,9 +2,9 @@ use anyhow::{Result, anyhow};
 use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 use gitdoc_api_types::requests::*;
+use gitdoc_api_types::responses::*;
 
 use crate::config::BasicAuth;
-use crate::types::*;
 
 pub struct GitdocClient {
     http: reqwest::Client,
@@ -81,7 +81,7 @@ impl GitdocClient {
     // Repos
     // -----------------------------------------------------------------------
 
-    pub async fn list_repos(&self) -> Result<Vec<RepoRow>> {
+    pub async fn list_repos(&self) -> Result<Vec<RepoSummary>> {
         self.send(self.http.get(self.url("/repos"))).await
     }
 
@@ -89,7 +89,7 @@ impl GitdocClient {
         self.send(self.http.get(self.url(&format!("/repos/{id}")))).await
     }
 
-    pub async fn create_repo(&self, id: &str, name: &str, url: &str) -> Result<serde_json::Value> {
+    pub async fn create_repo(&self, id: &str, name: &str, url: &str) -> Result<CreateRepoResponse> {
         let body = CreateRepoBody {
             id: id.to_string(),
             name: name.to_string(),
@@ -98,7 +98,7 @@ impl GitdocClient {
         self.send(self.http.post(self.url("/repos")).json(&body)).await
     }
 
-    pub async fn fetch_repo(&self, repo_id: &str) -> Result<serde_json::Value> {
+    pub async fn fetch_repo(&self, repo_id: &str) -> Result<FetchRepoResponse> {
         self.send(self.http.post(self.url(&format!("/repos/{repo_id}/fetch")))).await
     }
 
@@ -291,7 +291,7 @@ impl GitdocClient {
         query: &str,
         synthesize: Option<bool>,
         limit: Option<usize>,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<ExplainResult> {
         let q = ExplainQuery { q: query.to_string(), synthesize, limit };
         self.send(self.http.get(self.url(&format!("/snapshots/{snapshot_id}/explain"))).query(&q)).await
     }
@@ -317,7 +317,7 @@ impl GitdocClient {
         self.send(self.http.post(self.url(&format!("/snapshots/{snapshot_id}/converse"))).json(&body)).await
     }
 
-    pub async fn delete_conversation(&self, snapshot_id: i64, conversation_id: i64) -> Result<serde_json::Value> {
+    pub async fn delete_conversation(&self, snapshot_id: i64, conversation_id: i64) -> Result<DeleteResponse> {
         self.send(self.http.delete(self.url(&format!("/snapshots/{snapshot_id}/conversations/{conversation_id}")))).await
     }
 
@@ -325,13 +325,13 @@ impl GitdocClient {
     // Cheatsheet
     // -----------------------------------------------------------------------
 
-    pub async fn get_cheatsheet(&self, repo_id: &str) -> Result<serde_json::Value> {
+    pub async fn get_cheatsheet(&self, repo_id: &str) -> Result<Option<CheatsheetResponse>> {
         let resp = self.http.get(self.url(&format!("/repos/{repo_id}/cheatsheet"))).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(serde_json::json!({}));
+            return Ok(None);
         }
         let resp = Self::check_response(resp).await?;
-        Ok(resp.json().await?)
+        Ok(Some(resp.json().await?))
     }
 
     pub async fn generate_cheatsheet(
@@ -339,7 +339,7 @@ impl GitdocClient {
         repo_id: &str,
         snapshot_id: i64,
         trigger: Option<&str>,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<GenerateCheatsheetResponse> {
         let body = GenerateCheatsheetRequest {
             snapshot_id,
             trigger: trigger.map(|s| s.to_string()),
@@ -347,12 +347,12 @@ impl GitdocClient {
         self.send(self.http.post(self.url(&format!("/repos/{repo_id}/cheatsheet"))).json(&body)).await
     }
 
-    pub async fn list_cheatsheet_patches(&self, repo_id: &str, limit: Option<i64>, offset: Option<i64>) -> Result<serde_json::Value> {
+    pub async fn list_cheatsheet_patches(&self, repo_id: &str, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<CheatsheetPatchMeta>> {
         let q = PatchListQuery { limit, offset };
         self.send(self.http.get(self.url(&format!("/repos/{repo_id}/cheatsheet/patches"))).query(&q)).await
     }
 
-    pub async fn get_cheatsheet_patch(&self, repo_id: &str, patch_id: i64) -> Result<serde_json::Value> {
+    pub async fn get_cheatsheet_patch(&self, repo_id: &str, patch_id: i64) -> Result<CheatsheetPatchRow> {
         self.send(self.http.get(self.url(&format!("/repos/{repo_id}/cheatsheet/patches/{patch_id}")))).await
     }
 
@@ -416,24 +416,24 @@ impl GitdocClient {
     // Architect — Libs
     // -----------------------------------------------------------------------
 
-    pub async fn list_lib_profiles(&self, category: Option<&str>) -> Result<serde_json::Value> {
+    pub async fn list_lib_profiles(&self, category: Option<&str>) -> Result<Vec<LibProfileSummary>> {
         let q = ListLibsQuery { category: category.map(|s| s.to_string()) };
         self.send(self.http.get(self.url("/architect/libs")).query(&q)).await
     }
 
-    pub async fn get_lib_profile(&self, id: &str) -> Result<serde_json::Value> {
+    pub async fn get_lib_profile(&self, id: &str) -> Result<LibProfileRow> {
         self.send(self.http.get(self.url(&format!("/architect/libs/{id}")))).await
     }
 
-    pub async fn create_lib_profile(&self, body: &CreateLibRequest) -> Result<serde_json::Value> {
+    pub async fn create_lib_profile(&self, body: &CreateLibRequest) -> Result<LibProfileRow> {
         self.send(self.http.post(self.url("/architect/libs")).json(body)).await
     }
 
-    pub async fn generate_lib_profile(&self, id: &str, body: &GenerateLibProfileRequest) -> Result<serde_json::Value> {
+    pub async fn generate_lib_profile(&self, id: &str, body: &GenerateLibProfileRequest) -> Result<LibProfileRow> {
         self.send(self.http.post(self.url(&format!("/architect/libs/{id}/generate"))).json(body)).await
     }
 
-    pub async fn delete_lib_profile(&self, id: &str) -> Result<serde_json::Value> {
+    pub async fn delete_lib_profile(&self, id: &str) -> Result<DeleteResponse> {
         self.send(self.http.delete(self.url(&format!("/architect/libs/{id}")))).await
     }
 
@@ -441,7 +441,7 @@ impl GitdocClient {
     // Architect — Rules
     // -----------------------------------------------------------------------
 
-    pub async fn list_stack_rules(&self, rule_type: Option<&str>, subject: Option<&str>) -> Result<serde_json::Value> {
+    pub async fn list_stack_rules(&self, rule_type: Option<&str>, subject: Option<&str>) -> Result<Vec<StackRuleRow>> {
         let q = ListRulesQuery {
             rule_type: rule_type.map(|s| s.to_string()),
             subject: subject.map(|s| s.to_string()),
@@ -449,11 +449,11 @@ impl GitdocClient {
         self.send(self.http.get(self.url("/architect/rules")).query(&q)).await
     }
 
-    pub async fn upsert_stack_rule(&self, body: &UpsertRuleRequest) -> Result<serde_json::Value> {
+    pub async fn upsert_stack_rule(&self, body: &UpsertRuleRequest) -> Result<StackRuleRow> {
         self.send(self.http.post(self.url("/architect/rules")).json(body)).await
     }
 
-    pub async fn delete_stack_rule(&self, id: i64) -> Result<serde_json::Value> {
+    pub async fn delete_stack_rule(&self, id: i64) -> Result<DeleteResponse> {
         self.send(self.http.delete(self.url(&format!("/architect/rules/{id}")))).await
     }
 
@@ -461,11 +461,11 @@ impl GitdocClient {
     // Architect — Advise / Compare
     // -----------------------------------------------------------------------
 
-    pub async fn architect_advise(&self, body: &AdviseRequest) -> Result<serde_json::Value> {
+    pub async fn architect_advise(&self, body: &AdviseRequest) -> Result<AdviseResponse> {
         self.send(self.http.post(self.url("/architect/advise")).json(body)).await
     }
 
-    pub async fn compare_libs(&self, body: &CompareLibsRequest) -> Result<serde_json::Value> {
+    pub async fn compare_libs(&self, body: &CompareLibsRequest) -> Result<CompareLibsResponse> {
         self.send(self.http.post(self.url("/architect/compare")).json(body)).await
     }
 
@@ -473,19 +473,19 @@ impl GitdocClient {
     // Architect — Projects
     // -----------------------------------------------------------------------
 
-    pub async fn list_project_profiles(&self) -> Result<serde_json::Value> {
+    pub async fn list_project_profiles(&self) -> Result<Vec<ProjectProfileSummary>> {
         self.send(self.http.get(self.url("/architect/projects"))).await
     }
 
-    pub async fn create_project_profile(&self, body: &CreateProjectProfileRequest) -> Result<serde_json::Value> {
+    pub async fn create_project_profile(&self, body: &CreateProjectProfileRequest) -> Result<ProjectProfileRow> {
         self.send(self.http.post(self.url("/architect/projects")).json(body)).await
     }
 
-    pub async fn get_project_profile(&self, id: &str) -> Result<serde_json::Value> {
+    pub async fn get_project_profile(&self, id: &str) -> Result<ProjectProfileRow> {
         self.send(self.http.get(self.url(&format!("/architect/projects/{id}")))).await
     }
 
-    pub async fn delete_project_profile(&self, id: &str) -> Result<serde_json::Value> {
+    pub async fn delete_project_profile(&self, id: &str) -> Result<DeleteResponse> {
         self.send(self.http.delete(self.url(&format!("/architect/projects/{id}")))).await
     }
 
@@ -493,11 +493,11 @@ impl GitdocClient {
     // Architect — Decisions
     // -----------------------------------------------------------------------
 
-    pub async fn create_decision(&self, body: &CreateDecisionRequest) -> Result<serde_json::Value> {
+    pub async fn create_decision(&self, body: &CreateDecisionRequest) -> Result<ArchDecisionRow> {
         self.send(self.http.post(self.url("/architect/decisions")).json(body)).await
     }
 
-    pub async fn list_decisions(&self, project_profile_id: Option<&str>, status: Option<&str>) -> Result<serde_json::Value> {
+    pub async fn list_decisions(&self, project_profile_id: Option<&str>, status: Option<&str>) -> Result<Vec<ArchDecisionRow>> {
         let q = ListDecisionsQuery {
             project_profile_id: project_profile_id.map(|s| s.to_string()),
             status: status.map(|s| s.to_string()),
@@ -505,7 +505,7 @@ impl GitdocClient {
         self.send(self.http.get(self.url("/architect/decisions")).query(&q)).await
     }
 
-    pub async fn update_decision(&self, id: i64, body: &UpdateDecisionRequest) -> Result<serde_json::Value> {
+    pub async fn update_decision(&self, id: i64, body: &UpdateDecisionRequest) -> Result<ArchDecisionRow> {
         self.send(self.http.put(self.url(&format!("/architect/decisions/{id}"))).json(body)).await
     }
 
@@ -513,20 +513,20 @@ impl GitdocClient {
     // Architect — Patterns
     // -----------------------------------------------------------------------
 
-    pub async fn list_patterns(&self, category: Option<&str>) -> Result<serde_json::Value> {
+    pub async fn list_patterns(&self, category: Option<&str>) -> Result<Vec<ArchPatternRow>> {
         let q = ListPatternsQuery { category: category.map(|s| s.to_string()) };
         self.send(self.http.get(self.url("/architect/patterns")).query(&q)).await
     }
 
-    pub async fn create_pattern(&self, body: &CreatePatternRequest) -> Result<serde_json::Value> {
+    pub async fn create_pattern(&self, body: &CreatePatternRequest) -> Result<ArchPatternRow> {
         self.send(self.http.post(self.url("/architect/patterns")).json(body)).await
     }
 
-    pub async fn get_pattern(&self, id: i64) -> Result<serde_json::Value> {
+    pub async fn get_pattern(&self, id: i64) -> Result<ArchPatternRow> {
         self.send(self.http.get(self.url(&format!("/architect/patterns/{id}")))).await
     }
 
-    pub async fn delete_pattern(&self, id: i64) -> Result<serde_json::Value> {
+    pub async fn delete_pattern(&self, id: i64) -> Result<DeleteResponse> {
         self.send(self.http.delete(self.url(&format!("/architect/patterns/{id}")))).await
     }
 }

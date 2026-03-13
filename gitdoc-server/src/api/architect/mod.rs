@@ -13,18 +13,16 @@ pub use patterns::*;
 pub use advise::*;
 
 use r2e::prelude::*;
-use serde::Serialize;
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::CompareLibsRequest;
+use gitdoc_api_types::responses::{
+    DeleteResponse as DeletedResponse,
+    CompareLibsResponse,
+};
 
 use crate::embeddings::{self, EmbeddingProvider};
 use crate::error::GitdocError;
-
-#[derive(Serialize)]
-pub struct DeletedResponse {
-    pub deleted: bool,
-}
 
 /// Generate an embedding vector for the given text, if an embedder is available.
 pub(crate) async fn maybe_embed(
@@ -38,11 +36,6 @@ pub(crate) async fn maybe_embed(
         }
         _ => Ok(None),
     }
-}
-
-#[derive(Serialize)]
-pub struct CompareLibsResponse {
-    pub comparison: String,
 }
 
 #[derive(Controller)]

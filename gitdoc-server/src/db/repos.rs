@@ -1,5 +1,5 @@
 use anyhow::Result;
-use super::types::RepoRow;
+use super::types::{RepoRow, RepoSummaryRow};
 
 impl super::Database {
     pub async fn insert_repo(&self, id: &str, path: &str, name: &str, url: Option<&str>) -> Result<()> {
@@ -13,10 +13,26 @@ impl super::Database {
         Ok(())
     }
 
-    pub async fn list_repos(&self) -> Result<Vec<RepoRow>> {
-        let rows = sqlx::query_as::<_, RepoRow>("SELECT id, path, name, url, created_at FROM repos")
-            .fetch_all(&self.pool)
-            .await?;
+    pub async fn list_repos(&self) -> Result<Vec<RepoSummaryRow>> {
+        let rows = sqlx::query_as::<_, RepoSummaryRow>(
+            "SELECT r.id, r.path, r.name, r.url, r.created_at,
+                    COALESCE(s.cnt, 0) AS snapshot_count,
+                    ls.label AS latest_snapshot_label,
+                    ls.commit_sha AS latest_snapshot_commit,
+                    ls.indexed_at AS latest_snapshot_indexed_at
+             FROM repos r
+             LEFT JOIN LATERAL (
+                 SELECT COUNT(*) AS cnt FROM snapshots WHERE repo_id = r.id
+             ) s ON true
+             LEFT JOIN LATERAL (
+                 SELECT label, commit_sha, indexed_at
+                 FROM snapshots WHERE repo_id = r.id
+                 ORDER BY indexed_at DESC LIMIT 1
+             ) ls ON true
+             ORDER BY r.created_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
         Ok(rows)
     }
 

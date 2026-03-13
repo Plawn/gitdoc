@@ -8,12 +8,14 @@ use crate::AppState;
 use crate::db::SymbolFilters;
 use crate::error::GitdocError;
 
+/// JSON shape matches `gitdoc_api_types::responses::SymbolDetailResponse`.
 #[derive(Serialize)]
 pub struct SymbolWithChildren {
     pub symbol: crate::db::SymbolDetail,
     pub children: Vec<crate::db::SymbolRow>,
 }
 
+/// JSON shape matches `gitdoc_api_types::responses::SnapshotSymbolResponse`.
 #[derive(Serialize)]
 pub struct SnapshotSymbolResponse {
     pub symbol: crate::db::SymbolDetail,
@@ -22,11 +24,13 @@ pub struct SnapshotSymbolResponse {
     pub references_count: i64,
 }
 
+/// JSON shape matches `gitdoc_api_types::responses::BatchSymbolsResponse`.
 #[derive(Serialize)]
 pub struct BatchSymbolsResponse {
     pub symbols: Vec<crate::db::SymbolDetail>,
 }
 
+/// JSON shape matches `gitdoc_api_types::responses::SymbolContextResponse`.
 #[derive(Serialize)]
 pub struct SymbolContextResponse {
     pub symbol: crate::db::SymbolDetail,

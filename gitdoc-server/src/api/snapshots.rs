@@ -3,24 +3,19 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use gitdoc_api_types::responses::{
+    OverviewSymbol, DiffSymbolEntry, DiffSigVis, DiffSummary,
+    DiffResponse, DiffSummarizeResponse, ModifiedSymbol,
+};
+
 use crate::AppState;
 use crate::db::SymbolFilters;
 use crate::error::GitdocError;
 
 pub use crate::util::path_to_module;
 
-#[derive(Serialize)]
-pub struct OverviewSymbol {
-    id: i64,
-    name: String,
-    qualified_name: String,
-    kind: String,
-    visibility: String,
-    file_path: String,
-    signature: String,
-    doc_comment: Option<String>,
-}
-
+/// Server-local: embeds db types directly for zero-copy serialization.
+/// JSON shape matches `gitdoc_api_types::responses::OverviewResponse`.
 #[derive(Serialize)]
 pub struct OverviewResponse {
     pub snapshot: crate::db::SnapshotRow,
@@ -30,63 +25,9 @@ pub struct OverviewResponse {
 }
 
 #[derive(Serialize)]
-pub struct DiffSymbolEntry {
-    name: String,
-    qualified_name: String,
-    kind: String,
-    visibility: String,
-    file_path: String,
-    signature: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    body: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct DiffModifiedEntry {
-    qualified_name: String,
-    kind: String,
-    changes: Vec<String>,
-    from: DiffSigVis,
-    to: DiffSigVis,
-}
-
-#[derive(Serialize)]
-pub struct DiffSigVis {
-    signature: String,
-    visibility: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    body: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct DiffSummary {
-    added: usize,
-    removed: usize,
-    modified: usize,
-}
-
-#[derive(Serialize)]
-pub struct DiffResponse {
-    pub from_snapshot: i64,
-    pub to_snapshot: i64,
-    pub added: Vec<DiffSymbolEntry>,
-    pub removed: Vec<DiffSymbolEntry>,
-    pub modified: Vec<DiffModifiedEntry>,
-    pub summary: DiffSummary,
-}
-
-#[derive(Serialize)]
 pub struct DeleteSnapshotResponse {
     pub deleted: bool,
     pub gc: crate::db::GcStats,
-}
-
-#[derive(Serialize)]
-pub struct DiffSummarizeResponse {
-    pub from_snapshot: i64,
-    pub to_snapshot: i64,
-    pub changelog: String,
-    pub stats: DiffSummary,
 }
 
 use gitdoc_api_types::requests::DiffQuery;
@@ -254,7 +195,7 @@ impl SnapshotController {
                     changes.push("visibility".to_string());
                 }
                 if !changes.is_empty() {
-                    modified.push(DiffModifiedEntry {
+                    modified.push(ModifiedSymbol {
                         qualified_name: sym.qualified_name.clone(),
                         kind: sym.kind.clone(),
                         changes,

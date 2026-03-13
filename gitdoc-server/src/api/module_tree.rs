@@ -1,38 +1,13 @@
 use r2e::prelude::*;
-use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::ModuleTreeQuery;
+use gitdoc_api_types::responses::{ModuleTreeNode, ModuleTreeSymbol, ModuleTreeResponse};
 
 use crate::AppState;
 use crate::error::GitdocError;
 use crate::util::path_to_module;
-
-#[derive(Serialize)]
-pub struct ModuleTreeNode {
-    name: String,
-    path: String,
-    doc_comment: Option<String>,
-    public_items: i64,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    children: Vec<ModuleTreeNode>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    symbols: Vec<ModuleTreeSymbol>,
-}
-
-#[derive(Serialize, Clone)]
-pub struct ModuleTreeSymbol {
-    name: String,
-    kind: String,
-    signature: String,
-}
-
-#[derive(Serialize)]
-pub struct ModuleTreeResponse {
-    snapshot_id: i64,
-    tree: Vec<ModuleTreeNode>,
-}
 
 #[derive(Controller)]
 #[controller(path = "/snapshots", state = AppState)]

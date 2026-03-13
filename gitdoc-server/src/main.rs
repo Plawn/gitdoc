@@ -1,5 +1,6 @@
 use gitdoc_server::{AppState, config, db, embeddings, search};
 use r2e::prelude::*;
+use r2e::r2e_openapi::{OpenApiConfig, OpenApiPlugin};
 use tower_http::trace::TraceLayer;
 use std::sync::Arc;
 
@@ -108,6 +109,11 @@ async fn main() -> anyhow::Result<()> {
 
     AppBuilder::new()
         .with_state(state)
+        .with(OpenApiPlugin::new(
+            OpenApiConfig::new("GitDoc API", "0.1.0")
+                .with_description("Code intelligence server for LLM agents")
+                .with_docs_ui(true),
+        ))
         // Controllers
         .register_controller::<RepoController>()
         .register_controller::<CheatsheetController>()

@@ -24,6 +24,19 @@ pub struct RepoRow {
 }
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct RepoSummaryRow {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub url: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub snapshot_count: i64,
+    pub latest_snapshot_label: Option<String>,
+    pub latest_snapshot_commit: Option<String>,
+    pub latest_snapshot_indexed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
 pub struct SnapshotRow {
     pub id: i64,
     pub repo_id: String,
@@ -389,7 +402,7 @@ pub struct ArchPatternRow {
 
 // --- Conversation types ---
 
-#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ConversationRow {
     pub id: i64,
     pub snapshot_id: i64,
@@ -400,7 +413,7 @@ pub struct ConversationRow {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ConversationTurnRow {
     pub id: i64,
     pub conversation_id: i64,

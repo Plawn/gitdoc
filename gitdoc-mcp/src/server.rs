@@ -549,13 +549,10 @@ impl GitdocMcpServer {
 
         // Auto-generate cheatsheet if missing
         match self.client.get_cheatsheet(&p.repo_id).await {
-            Ok(cs) if cs.get("content").and_then(|v| v.as_str()).map_or(true, |s| s.is_empty()) => {
+            Ok(Some(ref cs)) if !cs.content.is_empty() => {} // cheatsheet exists
+            _ => {
                 self.auto_generate_cheatsheet(&p.repo_id, snapshot_id).await;
             }
-            Err(_) => {
-                self.auto_generate_cheatsheet(&p.repo_id, snapshot_id).await;
-            }
-            _ => {} // cheatsheet exists
         }
 
         // Look up or create conversation for this repo
@@ -604,7 +601,8 @@ impl GitdocMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let p = params.0;
         match self.client.get_cheatsheet(&p.repo_id).await {
-            Ok(result) => json_result(&result),
+            Ok(Some(result)) => json_result(&result),
+            Ok(None) => text_result("No cheatsheet found for this repo. Use update_cheatsheet to generate one.".to_string()),
             Err(e) => err_result(format!("error: {e}")),
         }
     }
@@ -841,28 +839,18 @@ impl GitdocMcpServer {
         };
         match self.client.architect_advise(&body).await {
             Ok(result) => {
-                // Format response nicely
-                let answer = result.get("answer").and_then(|v| v.as_str()).unwrap_or("");
-                let mut output = answer.to_string();
+                let mut output = result.answer.clone();
 
-                if let Some(libs) = result.get("relevant_libs").and_then(|v| v.as_array()) {
-                    if !libs.is_empty() {
-                        output.push_str("\n\n---\n**Relevant library profiles:**\n");
-                        for lib in libs {
-                            let id = lib.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                            let score = lib.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                            output.push_str(&format!("- {} (relevance: {:.2})\n", id, score));
-                        }
+                if !result.relevant_libs.is_empty() {
+                    output.push_str("\n\n---\n**Relevant library profiles:**\n");
+                    for lib in &result.relevant_libs {
+                        output.push_str(&format!("- {} (relevance: {:.2})\n", lib.id, lib.score));
                     }
                 }
-                if let Some(rules) = result.get("relevant_rules").and_then(|v| v.as_array()) {
-                    if !rules.is_empty() {
-                        output.push_str("\n**Relevant stack rules:**\n");
-                        for rule in rules {
-                            let id = rule.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                            let score = rule.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                            output.push_str(&format!("- Rule #{} (relevance: {:.2})\n", id, score));
-                        }
+                if !result.relevant_rules.is_empty() {
+                    output.push_str("\n**Relevant stack rules:**\n");
+                    for rule in &result.relevant_rules {
+                        output.push_str(&format!("- Rule #{} (relevance: {:.2})\n", rule.id, rule.score));
                     }
                 }
                 text_result(output)
@@ -1027,10 +1015,7 @@ impl GitdocMcpServer {
             criteria: p.criteria,
         };
         match self.client.compare_libs(&body).await {
-            Ok(result) => {
-                let comparison = result.get("comparison").and_then(|v| v.as_str()).unwrap_or("");
-                text_result(comparison.to_string())
-            }
+            Ok(result) => text_result(result.comparison),
             Err(e) => err_result(format!("error: {e}")),
         }
     }

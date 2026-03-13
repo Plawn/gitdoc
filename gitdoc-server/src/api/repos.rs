@@ -3,16 +3,11 @@ use serde::Serialize;
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::CreateRepoBody;
+use gitdoc_api_types::responses::{CreateRepoResponse, FetchRepoResponse};
 
 use crate::AppState;
 use crate::error::GitdocError;
 use crate::git_ops;
-
-#[derive(Serialize)]
-pub struct CreateRepoResponse {
-    pub id: String,
-    pub already_existed: bool,
-}
 
 #[derive(Serialize)]
 pub struct GetRepoResponse {
@@ -21,13 +16,7 @@ pub struct GetRepoResponse {
 }
 
 #[derive(Serialize)]
-pub struct FetchRepoResponse {
-    pub fetched: bool,
-    pub repo_id: String,
-}
-
-#[derive(Serialize)]
-pub struct DeleteResponse {
+pub struct DeleteRepoResponse {
     pub deleted: bool,
     pub gc: crate::db::GcStats,
 }
@@ -96,7 +85,7 @@ impl RepoController {
     #[get("/")]
     async fn list_repos(
         &self,
-    ) -> Result<Json<Vec<crate::db::RepoRow>>, GitdocError> {
+    ) -> Result<Json<Vec<crate::db::RepoSummaryRow>>, GitdocError> {
         let repos = self.db.list_repos().await?;
         Ok(Json(repos))
     }
@@ -173,7 +162,7 @@ impl RepoController {
     async fn delete_repo(
         &self,
         Path(repo_id): Path<String>,
-    ) -> Result<Json<DeleteResponse>, GitdocError> {
+    ) -> Result<Json<DeleteRepoResponse>, GitdocError> {
         let repo = self.db.get_repo(&repo_id).await?;
 
         let existed = self.db.delete_repo(&repo_id).await?;
@@ -186,6 +175,6 @@ impl RepoController {
         }
 
         let gc = self.db.gc_orphans().await?;
-        Ok(Json(DeleteResponse { deleted: true, gc }))
+        Ok(Json(DeleteRepoResponse { deleted: true, gc }))
     }
 }

@@ -9,6 +9,8 @@ use crate::embeddings;
 use crate::error::GitdocError;
 use super::truncate_text;
 
+/// JSON shape matches `gitdoc_api_types::responses::AdviseResponse`.
+/// Uses `crate::db::ArchitectSearchResult` directly since it serializes identically.
 #[derive(Serialize)]
 pub struct AdviseResponse {
     pub answer: String,

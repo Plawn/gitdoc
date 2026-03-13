@@ -3,16 +3,10 @@ use serde::Serialize;
 use std::sync::Arc;
 
 use gitdoc_api_types::requests::{SummarizeQuery, SummaryQuery};
+use gitdoc_api_types::responses::SummarizeResponse;
 
 use crate::AppState;
 use crate::error::GitdocError;
-
-#[derive(Serialize)]
-pub struct SummarizeResponse {
-    pub snapshot_id: i64,
-    pub scope: String,
-    pub content: String,
-}
 
 /// Response for GET /summary: either a single summary or a list of all summaries.
 #[derive(Serialize)]
