@@ -561,7 +561,7 @@ impl From<crate::db::ArchitectSearchResult> for proto::ArchitectSearchResult {
     fn from(v: crate::db::ArchitectSearchResult) -> Self {
         Self {
             id: v.id,
-            kind: v.kind,
+            kind: v.kind.to_string(),
             text: v.text,
             score: v.score,
         }

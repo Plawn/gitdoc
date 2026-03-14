@@ -1,39 +1,9 @@
 use anyhow::Result;
-use llm_ai::{CompletionMessage, OpenAiCompatibleClient, ResponseFormat, Role};
+use llm_ai::{CompletionMessage, OpenAiCompatibleClient, Role};
 
 use crate::db::Database;
 use crate::embeddings::{self, EmbeddingProvider};
-
-const PROFILE_GENERATION_PROMPT: &str = r#"You are an expert software analyst. Given context about a library (its cheatsheet, public API symbols, and module tree), generate a structured profile with these sections:
-
-## What it is
-One-sentence description.
-
-## Primary use cases
-Bullet list of what this library is best used for.
-
-## Key APIs
-The most important types, functions, and traits a user needs to know.
-
-## Architecture style
-How the library is organized (e.g. builder pattern, actor model, middleware stack, etc.).
-
-## Strengths
-What this library does well compared to alternatives.
-
-## Limitations
-Known limitations, missing features, or areas where alternatives might be better.
-
-## Ecosystem fit
-What other libraries it pairs well with, and where it sits in the ecosystem.
-
-## Gotchas
-Non-obvious behaviors, common mistakes, or surprising defaults.
-
-## Version notes
-Important changes or migration notes for the current version.
-
-Be concise and factual. Focus on information that helps an AI coding agent make informed technology choices."#;
+use crate::llm_executor::{LlmExecutor, PROMPT_ARCHITECT_COMPARE, PROMPT_ARCHITECT_PROFILE};
 
 /// Generate a lib profile from an already-indexed repo using LLM.
 pub async fn generate_lib_profile(
@@ -95,15 +65,11 @@ pub async fn generate_lib_profile(
         "Generate a profile for the library \"{lib_name}\" (version hint: {version_hint}, category: {category}).\n\n{context}"
     );
 
-    let messages = vec![
-        CompletionMessage::new(Role::System, PROFILE_GENERATION_PROMPT),
-        CompletionMessage::new(Role::User, &user_message),
-    ];
-
-    let resp = llm
-        .complete(&messages, Some(0.3), ResponseFormat::Text, Some(3000))
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {e}"))?;
+    let executor = LlmExecutor::new(llm);
+    let user = [CompletionMessage::new(Role::User, &user_message)];
+    let resp = executor
+        .run_anyhow(&PROMPT_ARCHITECT_PROFILE, &user)
+        .await?;
 
     let profile_text = resp.content;
     let model_name = llm.name().to_string();
@@ -160,22 +126,23 @@ pub async fn get_relevant_architect_context(
         return Ok(None);
     }
 
+    use crate::db::ArchitectResultKind;
+
     let mut output = String::from("## Technology guidance (from Architect)\n\n");
     for r in &relevant {
-        let label = match r.kind.as_str() {
-            "lib_profile" => format!("Library profile ({})", r.id),
-            "stack_rule" => format!("Stack rule #{}", r.id),
-            "cheatsheet" => format!("Repo cheatsheet ({})", r.id),
-            "project_profile" => format!("Project profile ({})", r.id),
-            "decision" => {
+        let label = match r.kind {
+            ArchitectResultKind::LibProfile => format!("Library profile ({})", r.id),
+            ArchitectResultKind::StackRule => format!("Stack rule #{}", r.id),
+            ArchitectResultKind::Cheatsheet => format!("Repo cheatsheet ({})", r.id),
+            ArchitectResultKind::ProjectProfile => format!("Project profile ({})", r.id),
+            ArchitectResultKind::Decision => {
                 if r.text.contains("(status: reverted)") {
                     format!("⚠ Reverted decision #{}", r.id)
                 } else {
                     format!("Architecture decision #{}", r.id)
                 }
             }
-            "pattern" => format!("Architecture pattern #{}", r.id),
-            _ => r.kind.clone(),
+            ArchitectResultKind::Pattern => format!("Architecture pattern #{}", r.id),
         };
         // Truncate long texts for injection
         let text = if r.text.len() > 1500 {
@@ -203,36 +170,30 @@ pub async fn compare_libs(
             Some(profile) => {
                 profiles_context.push_str(&format!(
                     "## {} ({})\nCategory: {}\nVersion: {}\n\n{}\n\n---\n\n",
-                    profile.name, profile.id, profile.category, profile.version_hint, profile.profile
+                    profile.name,
+                    profile.id,
+                    profile.category,
+                    profile.version_hint,
+                    profile.profile
                 ));
             }
             None => {
-                profiles_context.push_str(&format!("## {lib_id}\n(No profile found in knowledge base)\n\n---\n\n"));
+                profiles_context.push_str(&format!(
+                    "## {lib_id}\n(No profile found in knowledge base)\n\n---\n\n"
+                ));
             }
         }
     }
-
-    let system_prompt = "You are an expert software architect. Compare the given libraries and produce a structured comparison. For each library, provide:\n\n\
-        1. **Fit Score** (1-10): How well it fits the stated criteria\n\
-        2. **Pros**: Key advantages\n\
-        3. **Cons**: Key disadvantages\n\
-        4. **Differentiator**: What makes it unique\n\n\
-        Then provide a **Recommendation** section with your pick and reasoning.\n\n\
-        Be concise, factual, and actionable.";
 
     let user_message = format!(
         "Compare these libraries for the following criteria: {criteria}\n\n{profiles_context}"
     );
 
-    let messages = vec![
-        CompletionMessage::new(Role::System, system_prompt),
-        CompletionMessage::new(Role::User, &user_message),
-    ];
-
-    let resp = llm
-        .complete(&messages, Some(0.3), ResponseFormat::Text, Some(3000))
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {e}"))?;
+    let executor = LlmExecutor::new(llm);
+    let user = [CompletionMessage::new(Role::User, &user_message)];
+    let resp = executor
+        .run_anyhow(&PROMPT_ARCHITECT_COMPARE, &user)
+        .await?;
 
     tracing::info!(
         libs = ?lib_ids,

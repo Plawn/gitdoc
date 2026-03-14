@@ -1,4 +1,5 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString)]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum McpMode {
     Simple,
     Granular,
@@ -18,10 +19,10 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
-        let mode = match std::env::var("GITDOC_MCP_MODE").as_deref() {
-            Ok("granular") => McpMode::Granular,
-            _ => McpMode::Simple,
-        };
+        let mode = std::env::var("GITDOC_MCP_MODE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(McpMode::Simple);
         let basic_auth = match (
             std::env::var("GITDOC_BASIC_AUTH_USER"),
             std::env::var("GITDOC_BASIC_AUTH_PASSWORD"),

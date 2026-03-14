@@ -11,19 +11,9 @@ use gitdoc_api_types::responses::{
 use crate::AppState;
 use crate::embeddings;
 use crate::error::GitdocError;
+use crate::llm_executor::{LlmExecutor, PROMPT_CONVERSE};
 use super::prompt_budget::{estimate_str_tokens, estimate_tokens, build_conversation_user_message_with_budget};
 use super::condensation::{condense_history, update_cheatsheet_from_conversation};
-
-const CONVERSE_SYSTEM_PROMPT: &str = "You are a code intelligence assistant embedded in a codebase exploration tool. \
-    You answer questions about a codebase using the provided code context (symbols, docs, signatures). \
-    Be precise and reference specific types, functions, and modules. \
-    When showing code from the provided context, always cite the source file path (e.g. `src/foo.rs`). \
-    If you generate example code that is NOT from the context, mark it clearly as `[generated example]`. \
-    Prefer quoting verbatim from the provided context over paraphrasing or rewriting code. \
-    If you cannot provide the exact source code for a symbol the user is asking about, \
-    append: \"Tip: use `set_mode(\\\"granular\\\")` then `get_symbol` for the exact source code.\" \
-    If the context is insufficient, say so. \
-    Keep answers concise but thorough.";
 
 use gitdoc_api_types::requests::PaginationParams;
 
@@ -259,14 +249,11 @@ impl ConverseController {
             "prompt budget allocation"
         );
 
-        let messages = vec![
-            llm_ai::CompletionMessage::new(llm_ai::Role::System, CONVERSE_SYSTEM_PROMPT),
-            llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_message),
-        ];
+        let executor = LlmExecutor::new(&llm_client);
+        let user_msgs = [llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_message)];
 
         let llm_start = std::time::Instant::now();
-        let resp = llm_client
-            .complete(&messages, Some(0.3), llm_ai::ResponseFormat::Text, Some(3000))
+        let resp = executor.run(&PROMPT_CONVERSE, &user_msgs)
             .await
             .map_err(|e| GitdocError::Internal(anyhow::anyhow!("LLM error: {e}")))?;
 

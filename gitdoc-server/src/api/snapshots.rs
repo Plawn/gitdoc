@@ -11,6 +11,7 @@ use gitdoc_api_types::responses::{
 use crate::AppState;
 use crate::db::SymbolFilters;
 use crate::error::GitdocError;
+use crate::llm_executor::{LlmExecutor, PROMPT_DIFF_SUMMARIZE};
 
 pub use crate::util::path_to_module;
 
@@ -350,23 +351,9 @@ impl SnapshotController {
             stats.added, stats.removed, stats.modified, diff_text
         );
 
-        let messages = vec![
-            llm_ai::CompletionMessage {
-                role: llm_ai::Role::System,
-                content: "You are a technical changelog writer. Given a structured diff of symbols \
-                          (functions, types, modules) between two snapshots of a codebase, produce a \
-                          concise, human-readable changelog in markdown. Group changes by theme/area \
-                          when possible. Focus on what changed and why it matters, not implementation \
-                          details. Use bullet points. Keep it under 500 words.",
-            },
-            llm_ai::CompletionMessage {
-                role: llm_ai::Role::User,
-                content: &user_content,
-            },
-        ];
-
-        let response = llm_client
-            .complete(&messages, Some(0.3), llm_ai::ResponseFormat::Text, Some(2000))
+        let executor = LlmExecutor::new(&llm_client);
+        let user_msgs = [llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_content)];
+        let response = executor.run(&PROMPT_DIFF_SUMMARIZE, &user_msgs)
             .await
             .map_err(|e| GitdocError::Internal(e.into()))?;
         let changelog = response.content;

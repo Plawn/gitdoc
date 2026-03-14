@@ -1,4 +1,5 @@
 use crate::db::Database;
+use crate::llm_executor::{LlmExecutor, PROMPT_CONDENSATION, PROMPT_CONDENSATION_MERGE, PROMPT_CHEATSHEET_LEARNINGS};
 
 pub(crate) async fn condense_history(
     db: &Database,
@@ -6,7 +7,7 @@ pub(crate) async fn condense_history(
     conversation_id: i64,
     condensed_up_to: i32,
 ) -> anyhow::Result<()> {
-    use llm_ai::{CompletionMessage, ResponseFormat, Role};
+    use llm_ai::{CompletionMessage, Role};
 
     // Load only un-condensed turns (those after the current boundary)
     let turns = db.list_recent_turns(conversation_id, condensed_up_to, 100).await?;
@@ -38,29 +39,18 @@ pub(crate) async fn condense_history(
         input.push_str(&format!("Q: {}\nA: {}\n\n", turn.question, turn.answer));
     }
 
-    let system_prompt = if existing_condensed.is_empty() {
-        "You are a summarization assistant. Condense the following conversation about a codebase \
-         into a concise summary (~300 words). Preserve key technical facts, decisions, and \
-         conclusions. The summary will be used as context for future questions in this conversation."
+    let prompt = if existing_condensed.is_empty() {
+        &PROMPT_CONDENSATION
     } else {
-        "You are a summarization assistant. You are given an existing summary of earlier conversation \
-         and new turns that followed. Produce a single merged summary (~300 words) that incorporates \
-         all key technical facts, decisions, and conclusions from both the existing summary and the \
-         new turns. The merged summary replaces the old one entirely."
+        &PROMPT_CONDENSATION_MERGE
     };
-
-    let messages = vec![
-        CompletionMessage::new(Role::System, system_prompt),
-        CompletionMessage::new(Role::User, &input),
-    ];
 
     let condense_input_len = input.len();
     tracing::debug!(condense_input_len, input = %input, conversation_id, "condense_history LLM prompt");
 
-    let resp = llm
-        .complete(&messages, Some(0.2), ResponseFormat::Text, Some(1000))
-        .await
-        .map_err(|e| anyhow::anyhow!("condensation LLM error: {e}"))?;
+    let executor = LlmExecutor::new(llm);
+    let user = [CompletionMessage::new(Role::User, &input)];
+    let resp = executor.run_anyhow(prompt, &user).await?;
 
     tracing::debug!(condense_output_len = resp.content.len(), output = %resp.content, conversation_id, "condense_history LLM response");
 
@@ -99,28 +89,11 @@ pub(crate) async fn update_cheatsheet_from_conversation(
         history.push_str(&format!("Q: {}\nA: {}\n\n", turn.question, turn.answer));
     }
 
-    // Extract learnings directly (conversation already deleted, use turns we saved)
-    use llm_ai::{CompletionMessage, ResponseFormat, Role};
-    let messages = vec![
-        CompletionMessage::new(
-            Role::System,
-            "You are an expert at extracting technical knowledge. Given a conversation about a \
-             codebase, extract the key technical insights as bullet points. Focus on:\n\
-             - Architectural patterns discovered\n\
-             - Important types/functions and their roles\n\
-             - Non-obvious behaviors or gotchas\n\
-             - Conventions and patterns\n\
-             - Corrections to initial assumptions\n\n\
-             Only include facts that were confirmed in the conversation. \
-             If the conversation was superficial with no real insights, respond with 'No significant learnings.'",
-        ),
-        CompletionMessage::new(Role::User, &history),
-    ];
-
-    let resp = llm_client
-        .complete(&messages, Some(0.2), ResponseFormat::Text, Some(1500))
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {e}"))?;
+    // Extract learnings
+    use llm_ai::{CompletionMessage, Role};
+    let executor = LlmExecutor::new(llm_client);
+    let user = [CompletionMessage::new(Role::User, &history)];
+    let resp = executor.run_anyhow(&PROMPT_CHEATSHEET_LEARNINGS, &user).await?;
 
     tracing::info!(
         repo_id,

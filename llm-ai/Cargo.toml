@@ -16,3 +16,4 @@ tracing = { workspace = true }
 thiserror = "2"
 metrics = "0.24"
 utoipa = { version = "4", optional = true }
+strum = { workspace = true }

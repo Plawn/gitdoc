@@ -1,0 +1,47 @@
+{
+  "session_id": "ec0dd66a-ad3b-4d46-a93a-5dfbf5a5a578",
+  "phase": "PREFLIGHT",
+  "round": 1,
+  "timestamp": "2026-03-14T09:36:56.999025+00:00",
+  "vectors": {
+    "topic": 0.5
+  },
+  "overall_confidence": 0.5,
+  "meta": {
+    "reasoning": "Continuing LLM calling patterns exploration from previous session",
+    "prompt": "Continuing LLM calling patterns exploration from previous session",
+    "git_commit_sha": "2450920ea6a8f43450a1fb60637a56e80476bc6b",
+    "git_notes_ref": "empirica/session/ec0dd66a-ad3b-4d46-a93a-5dfbf5a5a578/PREFLIGHT/1"
+  },
+  "epistemic_tags": {},
+  "git_state": {
+    "head_commit": "5c33a5ffb85468114f6544a1df6c539a7108f72f",
+    "commits_since_last_checkpoint": [],
+    "uncommitted_changes": {
+      "files_modified": [
+        "Cargo.lock",
+        "gitdoc-server/Cargo.toml",
+        "gitdoc-server/src/api/architect/advise.rs",
+        "gitdoc-server/src/api/condensation.rs",
+        "gitdoc-server/src/api/converse.rs",
+        "gitdoc-server/src/api/explain.rs",
+        "gitdoc-server/src/api/snapshots.rs",
+        "gitdoc-server/src/architect.rs",
+        "gitdoc-server/src/cheatsheet.rs",
+        "gitdoc-server/src/grpc/analysis.rs",
+        "gitdoc-server/src/grpc/architect.rs",
+        "gitdoc-server/src/grpc/converse.rs",
+        "gitdoc-server/src/grpc/snapshots.rs",
+        "gitdoc-server/src/lib.rs",
+        "gitdoc-server/src/llm.rs",
+        "gitdoc-server/src/main.rs",
+        "llm-ai/src/retry.rs"
+      ],
+      "files_added": [],
+      "files_deleted": [],
+      "diff_stat": "Cargo.lock                                | 50 +++++++++++++++++++++++++++++++\n gitdoc-server/Cargo.toml                  |  3 +-\n gitdoc-server/src/api/architect/advise.rs |  4 +--\n gitdoc-server/src/api/condensation.rs     |  7 ++---\n gitdoc-server/src/api/converse.rs         |  4 +--\n gitdoc-server/src/api/explain.rs          |  4 +--\n gitdoc-server/src/api/snapshots.rs        |  4 +--\n gitdoc-server/src/architect.rs            |  7 ++---\n gitdoc-server/src/cheatsheet.rs           | 10 +++----\n gitdoc-server/src/grpc/analysis.rs        |  6 ++--\n gitdoc-server/src/grpc/architect.rs       |  6 ++--\n gitdoc-server/src/grpc/converse.rs        |  4 +--\n gitdoc-server/src/grpc/snapshots.rs       |  4 +--\n gitdoc-server/src/lib.rs                  |  1 +\n gitdoc-server/src/llm.rs                  | 12 ++++----\n gitdoc-server/src/main.rs                 | 15 +++++++++-\n llm-ai/src/retry.rs                       | 41 +++++++++++++++++++++++++\n 17 files changed, 143 insertions(+), 39 deletions(-)"
+    }
+  },
+  "learning_delta": {},
+  "token_count": 182
+}

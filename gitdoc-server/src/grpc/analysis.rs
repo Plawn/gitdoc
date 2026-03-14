@@ -331,7 +331,7 @@ impl AnalysisGrpcService {
         let synthesis = if req.synthesize {
             if let Some(ref llm_client) = self.llm_client {
                 Some(
-                    synthesize_answer(llm_client, &req.q, &relevant_symbols, &relevant_docs)
+                    crate::llm::synthesize_answer(llm_client, &req.q, &relevant_symbols, &relevant_docs)
                         .await
                         .map_err(|e| Status::internal(e.to_string()))?,
                 )
@@ -495,71 +495,3 @@ fn build_module_tree(
     convert(&root_children, 0, max_depth)
 }
 
-async fn synthesize_answer(
-    client: &llm_ai::OpenAiCompatibleClient,
-    query: &str,
-    symbols: &[RelevantSymbol],
-    docs: &[RelevantDoc],
-) -> Result<String, anyhow::Error> {
-    let mut context = String::new();
-
-    if !docs.is_empty() {
-        context.push_str("## Relevant documentation\n\n");
-        for doc in docs.iter().take(5) {
-            context.push_str(&format!(
-                "### {} ({})\n{}\n\n",
-                doc.title.as_deref().unwrap_or("untitled"),
-                doc.file_path,
-                doc.snippet,
-            ));
-        }
-    }
-
-    if !symbols.is_empty() {
-        context.push_str("## Relevant symbols\n\n");
-        for sym in symbols.iter().take(10) {
-            context.push_str(&format!(
-                "### {} ({}) — {}\n",
-                sym.name, sym.kind, sym.file_path
-            ));
-            context.push_str(&format!("Signature: {}\n", sym.signature));
-            if let Some(ref doc) = sym.doc_comment {
-                let first_lines: String = doc.lines().take(5).collect::<Vec<_>>().join("\n");
-                context.push_str(&format!("Doc: {}\n", first_lines));
-            }
-            if !sym.methods.is_empty() {
-                context.push_str("Methods:\n");
-                for m in sym.methods.iter().take(10) {
-                    context.push_str(&format!("  - {}: {}\n", m.name, m.signature));
-                }
-            }
-            if !sym.traits.is_empty() {
-                context.push_str(&format!("Implements: {}\n", sym.traits.join(", ")));
-            }
-            context.push('\n');
-        }
-    }
-
-    let user_msg = format!("Question: {}\n\n{}", query, context);
-    let messages = vec![
-        llm_ai::CompletionMessage::new(
-            llm_ai::Role::System,
-            "You are a code intelligence assistant. Given relevant documentation and code symbols \
-             from a codebase, answer the user's question clearly and concisely. Reference specific \
-             types, functions, and modules. If the context is insufficient, say so.",
-        ),
-        llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_msg),
-    ];
-
-    let resp = client
-        .complete(
-            &messages,
-            Some(0.3),
-            llm_ai::ResponseFormat::Text,
-            Some(2000),
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {e}"))?;
-
-    Ok(resp.content)
-}

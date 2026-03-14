@@ -20,6 +20,11 @@ const METRIC_CONCURRENCY: &str = "llm_concurrency";
 const METRIC_SEMAPHORE_QUEUED: &str = "llm_semaphore_queued";
 const METRIC_SEMAPHORE_WAIT_SECONDS: &str = "llm_semaphore_wait_duration_seconds";
 const METRIC_PROVIDER_REQUEST_SECONDS: &str = "llm_provider_request_duration_seconds";
+const METRIC_COMPLETION_SECONDS: &str = "llm_completion_duration_seconds";
+const METRIC_INPUT_TOKENS: &str = "llm_input_tokens_total";
+const METRIC_OUTPUT_TOKENS: &str = "llm_output_tokens_total";
+const METRIC_CACHED_TOKENS: &str = "llm_cached_tokens_total";
+const METRIC_THINKING_TOKENS: &str = "llm_thinking_tokens_total";
 
 /// RAII guard to decrement the concurrency gauge on drop.
 struct ConcurrencyGuard;
@@ -175,6 +180,28 @@ pub async fn do_completion_with_retries(
                 )
                 .record(attempt_start.elapsed().as_secs_f64());
 
+                // Record end-to-end latency (includes semaphore wait + retries)
+                metrics::histogram!(
+                    METRIC_COMPLETION_SECONDS,
+                    "model" => model_name.clone(),
+                    "status" => "success",
+                )
+                .record(call_start.elapsed().as_secs_f64());
+
+                // Record token consumption
+                metrics::counter!(METRIC_INPUT_TOKENS, "model" => model_name.clone())
+                    .increment(response.input_tokens as u64);
+                metrics::counter!(METRIC_OUTPUT_TOKENS, "model" => model_name.clone())
+                    .increment(response.output_tokens as u64);
+                if response.cached_tokens > 0 {
+                    metrics::counter!(METRIC_CACHED_TOKENS, "model" => model_name.clone())
+                        .increment(response.cached_tokens as u64);
+                }
+                if response.thinking_tokens > 0 {
+                    metrics::counter!(METRIC_THINKING_TOKENS, "model" => model_name.clone())
+                        .increment(response.thinking_tokens as u64);
+                }
+
                 if let Some(prefix) = config.log_prefix {
                     tracing::debug!(
                         attempt = attempt + 1,
@@ -253,6 +280,12 @@ pub async fn do_completion_with_retries(
 
                 // Only retry on rate limit (429) - fail immediately on all other errors
                 if !is_rate_limit {
+                    metrics::histogram!(
+                        METRIC_COMPLETION_SECONDS,
+                        "model" => model_name.clone(),
+                        "status" => "error",
+                    )
+                    .record(call_start.elapsed().as_secs_f64());
                     return Err(e);
                 }
 
@@ -271,6 +304,14 @@ pub async fn do_completion_with_retries(
             }
         }
     }
+
+    // Record end-to-end latency for exhausted retries
+    metrics::histogram!(
+        METRIC_COMPLETION_SECONDS,
+        "model" => model_name.clone(),
+        "status" => "exhausted",
+    )
+    .record(call_start.elapsed().as_secs_f64());
 
     let final_error =
         last_error.unwrap_or_else(|| AiClientError::max_retries_exceeded(config.max_retries, None));

@@ -13,7 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 # HTTP
-r2e = { git = "https://github.com/Plawn/r2e.git", tag = "v0.2.25", features = ["openapi", "grpc"] }
+r2e = { git = "https://github.com/Plawn/r2e.git", tag = "v0.2.25", features = ["openapi", "grpc", "prometheus"] }
+prometheus = "0.14"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tokio = { workspace = true }
 
@@ -44,9 +45,6 @@ regex = "1"
 # HTTP (async, for embedding providers)
 reqwest = { workspace = true }
 
-# Config
-toml = "0.8"
-
 # LLM
 llm-ai = { path = "../llm-ai" }
 
@@ -58,6 +56,7 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 gitdoc-api-types = { path = "../gitdoc-api-types" }
 hex = "0.4"
+strum = { workspace = true }
 streaming-iterator = "0.1"
 tonic = "~0.13"
 prost = "~0.13"

@@ -4,6 +4,7 @@ use tonic::{Request, Response, Status};
 
 use super::proto;
 use crate::AppState;
+use crate::llm_executor::{LlmExecutor, PROMPT_ARCHITECT_ADVISE};
 
 #[derive(Controller)]
 #[controller(state = AppState)]
@@ -317,17 +318,18 @@ impl ArchitectGrpcService {
         let mut relevant_rules: Vec<crate::db::ArchitectSearchResult> = Vec::new();
         let mut context = String::new();
 
+        use crate::db::ArchitectResultKind;
         for r in results {
-            match r.kind.as_str() {
-                "lib_profile" => {
+            match r.kind {
+                ArchitectResultKind::LibProfile => {
                     context.push_str(&format!("### Library: {}\n{}\n\n", r.id, r.text));
                     relevant_libs.push(r);
                 }
-                "stack_rule" => {
+                ArchitectResultKind::StackRule => {
                     context.push_str(&format!("### Stack Rule #{}\n{}\n\n", r.id, r.text));
                     relevant_rules.push(r);
                 }
-                "cheatsheet" => {
+                ArchitectResultKind::Cheatsheet => {
                     let text = if r.text.len() > 1500 {
                         format!("{}...", &r.text[..1500])
                     } else {
@@ -339,14 +341,14 @@ impl ArchitectGrpcService {
                     ));
                     relevant_libs.push(r);
                 }
-                "project_profile" => {
+                ArchitectResultKind::ProjectProfile => {
                     context.push_str(&format!(
                         "### Project Profile ({})\n{}\n\n",
                         r.id, r.text
                     ));
                     relevant_rules.push(r);
                 }
-                "decision" => {
+                ArchitectResultKind::Decision => {
                     let warning = if r.text.contains("(status: reverted)") {
                         " ⚠ REVERTED"
                     } else {
@@ -358,18 +360,15 @@ impl ArchitectGrpcService {
                     ));
                     relevant_rules.push(r);
                 }
-                "pattern" => {
+                ArchitectResultKind::Pattern => {
                     context.push_str(&format!(
                         "### Architecture Pattern #{}\n{}\n\n",
                         r.id, r.text
                     ));
                     relevant_libs.push(r);
                 }
-                _ => {}
             }
         }
-
-        let system_prompt = "You are an expert software architect advisor. Given the user's question and relevant library profiles, stack rules, project profiles, architecture decisions, and patterns from the knowledge base, provide a clear, actionable recommendation. Reference specific libraries and rules when applicable. Be concise but thorough.";
 
         let user_message = if context.is_empty() {
             format!("Question: {}\n\nNo relevant context found in the knowledge base. Answer based on your general knowledge.", req.question)
@@ -380,18 +379,9 @@ impl ArchitectGrpcService {
             )
         };
 
-        let messages = vec![
-            llm_ai::CompletionMessage::new(llm_ai::Role::System, system_prompt),
-            llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_message),
-        ];
-
-        let resp = llm_client
-            .complete(
-                &messages,
-                Some(0.3),
-                llm_ai::ResponseFormat::Text,
-                Some(2000),
-            )
+        let executor = LlmExecutor::new(&llm_client);
+        let user_msgs = [llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_message)];
+        let resp = executor.run(&PROMPT_ARCHITECT_ADVISE, &user_msgs)
             .await
             .map_err(|e| Status::internal(format!("LLM error: {e}")))?;
 

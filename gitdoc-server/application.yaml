@@ -1,0 +1,26 @@
+gitdoc:
+  bind_addr: "127.0.0.1:3000"
+  database_url: "postgres://localhost/gitdoc"
+  index_path: "./gitdoc_index"
+  repos_dir: "./gitdoc_repos"
+  log_format: "text"
+  max_prompt_tokens: 12000
+  condensation_threshold: 6000
+  architect_mode: "tools_only"
+  exclusion_patterns:
+    - "node_modules/"
+    - "target/"
+    - ".git/"
+    - "vendor/"
+    - ".next/"
+    - "dist/"
+    - "build/"
+    - "__pycache__/"
+  # embedding:
+  #   provider: "cohere"
+  #   api_key: "your-key-here"
+  # llm:
+  #   kind: "azure"
+  #   endpoint: "https://your-endpoint"
+  #   key: "your-key"
+  #   model: "your-model"

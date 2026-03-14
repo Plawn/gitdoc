@@ -1,8 +1,5 @@
 //! Shared types for LLM conversations.
 
-use std::fmt;
-use std::str::FromStr;
-
 use serde::{Deserialize, Serialize};
 
 use crate::config::EngineKind;
@@ -13,8 +10,13 @@ use crate::config::EngineKind;
 
 /// Message role in a conversation.
 /// Each variant maps to the appropriate string for the target backend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash,
+    Serialize, Deserialize,
+    strum::Display, strum::EnumString,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum Role {
     System,
     User,
@@ -49,63 +51,6 @@ impl Role {
             Role::Function => "function",
             Role::Tool => "tool",
         }
-    }
-}
-
-impl fmt::Display for Role {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Error when parsing an invalid role string
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParseRoleError(pub String);
-
-impl fmt::Display for ParseRoleError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Invalid role '{}'. Valid roles: system, user, assistant, developer, function, tool",
-            self.0
-        )
-    }
-}
-
-impl std::error::Error for ParseRoleError {}
-
-impl FromStr for Role {
-    type Err = ParseRoleError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Case-insensitive parsing
-        match s.to_lowercase().as_str() {
-            "system" => Ok(Role::System),
-            "user" => Ok(Role::User),
-            "assistant" => Ok(Role::Assistant),
-            "developer" => Ok(Role::Developer),
-            "function" => Ok(Role::Function),
-            "tool" => Ok(Role::Tool),
-            _ => Err(ParseRoleError(s.to_string())),
-        }
-    }
-}
-
-impl TryFrom<&str> for Role {
-    type Error = ParseRoleError;
-
-    #[inline]
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        s.parse()
-    }
-}
-
-impl TryFrom<String> for Role {
-    type Error = ParseRoleError;
-
-    #[inline]
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        s.parse()
     }
 }
 

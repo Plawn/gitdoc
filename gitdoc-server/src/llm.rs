@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use llm_ai::{CompletionMessage, OpenAiCompatibleClient, ResponseFormat, Role};
+use llm_ai::{CompletionMessage, OpenAiCompatibleClient, Role};
 
 use crate::db::Database;
+use crate::llm_executor::{LlmExecutor, PROMPT_SUMMARY_CRATE, PROMPT_SUMMARY_MODULE, PROMPT_SUMMARY_TYPE};
 
 /// Generate a crate-level summary from the module tree and top-level symbols.
 pub async fn generate_crate_summary(
@@ -38,24 +39,9 @@ pub async fn generate_crate_summary(
         sig_lines.join("\n"),
     );
 
-    let messages = vec![
-        CompletionMessage::new(
-            Role::System,
-            "You are a technical documentation expert. Given the module structure and public API \
-             of a Rust crate, produce a concise summary (3-8 paragraphs) that explains:\n\
-             1. What the crate does (purpose)\n\
-             2. How it's organized (key modules)\n\
-             3. Main types and their roles\n\
-             4. Typical usage patterns\n\
-             Be precise and technical. Do not invent information not present in the data.",
-        ),
-        CompletionMessage::new(Role::User, &context),
-    ];
-
-    let resp = client
-        .complete(&messages, Some(0.3), ResponseFormat::Text, Some(2000))
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {e}"))?;
+    let executor = LlmExecutor::new(client);
+    let user = [CompletionMessage::new(Role::User, &context)];
+    let resp = executor.run_anyhow(&PROMPT_SUMMARY_CRATE, &user).await?;
 
     Ok(resp.content)
 }
@@ -94,20 +80,9 @@ pub async fn generate_module_summary(
         sig_lines.join("\n"),
     );
 
-    let messages = vec![
-        CompletionMessage::new(
-            Role::System,
-            "You are a technical documentation expert. Given the public symbols of a Rust module, \
-             produce a concise summary (2-4 paragraphs) that explains what this module provides, \
-             its key types and functions, and how they relate to each other. Be precise.",
-        ),
-        CompletionMessage::new(Role::User, &context),
-    ];
-
-    let resp = client
-        .complete(&messages, Some(0.3), ResponseFormat::Text, Some(1500))
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {e}"))?;
+    let executor = LlmExecutor::new(client);
+    let user = [CompletionMessage::new(Role::User, &context)];
+    let resp = executor.run_anyhow(&PROMPT_SUMMARY_MODULE, &user).await?;
 
     Ok(resp.content)
 }
@@ -162,20 +137,9 @@ pub async fn generate_type_summary(
         trait_list.join("\n"),
     );
 
-    let messages = vec![
-        CompletionMessage::new(
-            Role::System,
-            "You are a technical documentation expert. Given a Rust type with its methods and trait \
-             relationships, produce a concise summary (1-3 paragraphs) that explains what this type \
-             represents, its key methods, and how it fits into the library. Be precise.",
-        ),
-        CompletionMessage::new(Role::User, &context),
-    ];
-
-    let resp = client
-        .complete(&messages, Some(0.3), ResponseFormat::Text, Some(1000))
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {e}"))?;
+    let executor = LlmExecutor::new(client);
+    let user = [CompletionMessage::new(Role::User, &context)];
+    let resp = executor.run_anyhow(&PROMPT_SUMMARY_TYPE, &user).await?;
 
     Ok(resp.content)
 }
@@ -209,4 +173,58 @@ pub async fn generate_and_store_summary(
         .await?;
 
     Ok(content)
+}
+
+/// Shared `synthesize_answer` used by both `api/explain.rs` and `grpc/analysis.rs`.
+pub async fn synthesize_answer(
+    client: &OpenAiCompatibleClient,
+    query: &str,
+    symbols: &[gitdoc_api_types::responses::RelevantSymbol],
+    docs: &[gitdoc_api_types::responses::RelevantDoc],
+) -> Result<String> {
+    let mut context = String::new();
+
+    if !docs.is_empty() {
+        context.push_str("## Relevant documentation\n\n");
+        for doc in docs.iter().take(5) {
+            context.push_str(&format!(
+                "### {} ({})\n{}\n\n",
+                doc.title.as_deref().unwrap_or("untitled"),
+                doc.file_path,
+                doc.snippet,
+            ));
+        }
+    }
+
+    if !symbols.is_empty() {
+        context.push_str("## Relevant symbols\n\n");
+        for sym in symbols.iter().take(10) {
+            context.push_str(&format!(
+                "### {} ({}) — {}\n",
+                sym.name, sym.kind, sym.file_path
+            ));
+            context.push_str(&format!("Signature: {}\n", sym.signature));
+            if let Some(ref doc) = sym.doc_comment {
+                let first_lines: String = doc.lines().take(5).collect::<Vec<_>>().join("\n");
+                context.push_str(&format!("Doc: {}\n", first_lines));
+            }
+            if !sym.methods.is_empty() {
+                context.push_str("Methods:\n");
+                for m in sym.methods.iter().take(10) {
+                    context.push_str(&format!("  - {}: {}\n", m.name, m.signature));
+                }
+            }
+            if !sym.traits.is_empty() {
+                context.push_str(&format!("Implements: {}\n", sym.traits.join(", ")));
+            }
+            context.push('\n');
+        }
+    }
+
+    let user_msg = format!("Question: {}\n\n{}", query, context);
+    let executor = LlmExecutor::new(client);
+    let user = [CompletionMessage::new(Role::User, &user_msg)];
+    let resp = executor.run_anyhow(&crate::llm_executor::PROMPT_EXPLAIN, &user).await?;
+
+    Ok(resp.content)
 }

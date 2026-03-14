@@ -11,10 +11,14 @@ pub mod cheatsheet;
 pub mod architect;
 pub mod util;
 pub mod grpc;
+pub mod llm_executor;
+pub mod producers;
 
 use std::sync::Arc;
 
-#[derive(Clone)]
+use r2e::prelude::BeanState;
+
+#[derive(Clone, BeanState)]
 pub struct AppState {
     pub db: Arc<db::Database>,
     pub search: Arc<search::SearchIndex>,

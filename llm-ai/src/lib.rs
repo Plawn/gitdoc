@@ -11,4 +11,4 @@ pub use client_provider::ClientProvider;
 pub use config::{CompletionRetryConfig, EngineConfig, EngineKind};
 pub use error::{AiClientError, ErrorCategory};
 pub use retry::{do_completion_with_retries, is_rate_limit_error, RetryConfig};
-pub use types::{ParseRoleError, ReasoningEffort, ResponseFormat, Role, ThinkingConfig};
+pub use types::{ReasoningEffort, ResponseFormat, Role, ThinkingConfig};

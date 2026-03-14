@@ -15,3 +15,4 @@ anyhow = { workspace = true }
 base64 = "0.22"
 tracing = { workspace = true }
 gitdoc-api-types = { path = "../gitdoc-api-types" }
+strum = { workspace = true }

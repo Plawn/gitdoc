@@ -8,6 +8,7 @@ use gitdoc_api_types::responses::SourceRef;
 use super::proto;
 use crate::AppState;
 use crate::embeddings;
+use crate::llm_executor::{LlmExecutor, PROMPT_CONVERSE};
 
 #[derive(Controller)]
 #[controller(state = AppState)]
@@ -21,17 +22,6 @@ pub struct ConverseGrpcService {
     #[inject]
     config: Arc<crate::config::Config>,
 }
-
-const CONVERSE_SYSTEM_PROMPT: &str = "You are a code intelligence assistant embedded in a codebase exploration tool. \
-    You answer questions about a codebase using the provided code context (symbols, docs, signatures). \
-    Be precise and reference specific types, functions, and modules. \
-    When showing code from the provided context, always cite the source file path (e.g. `src/foo.rs`). \
-    If you generate example code that is NOT from the context, mark it clearly as `[generated example]`. \
-    Prefer quoting verbatim from the provided context over paraphrasing or rewriting code. \
-    If you cannot provide the exact source code for a symbol the user is asking about, \
-    append: \"Tip: use `set_mode(\\\"granular\\\")` then `get_symbol` for the exact source code.\" \
-    If the context is insufficient, say so. \
-    Keep answers concise but thorough.";
 
 #[grpc_routes(proto::converse_service_server::ConverseService)]
 impl ConverseGrpcService {
@@ -269,13 +259,9 @@ impl ConverseGrpcService {
                 self.config.max_prompt_tokens,
             );
 
-        let messages = vec![
-            llm_ai::CompletionMessage::new(llm_ai::Role::System, CONVERSE_SYSTEM_PROMPT),
-            llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_message),
-        ];
-
-        let resp = llm_client
-            .complete(&messages, Some(0.3), llm_ai::ResponseFormat::Text, Some(3000))
+        let executor = LlmExecutor::new(&llm_client);
+        let user_msgs = [llm_ai::CompletionMessage::new(llm_ai::Role::User, &user_message)];
+        let resp = executor.run(&PROMPT_CONVERSE, &user_msgs)
             .await
             .map_err(|e| Status::internal(format!("LLM error: {e}")))?;
 

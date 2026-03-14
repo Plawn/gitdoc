@@ -337,10 +337,26 @@ pub struct StackRuleRow {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq,
+    serde::Serialize, serde::Deserialize,
+    strum::Display, strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ArchitectResultKind {
+    LibProfile,
+    StackRule,
+    Cheatsheet,
+    ProjectProfile,
+    Decision,
+    Pattern,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct ArchitectSearchResult {
     pub id: String,
-    pub kind: String,
+    pub kind: ArchitectResultKind,
     pub text: String,
     pub score: f64,
 }

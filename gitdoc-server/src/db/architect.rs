@@ -1,6 +1,6 @@
 use anyhow::Result;
 use super::types::{
-    LibProfileRow, LibProfileSummary, StackRuleRow, ArchitectSearchResult,
+    LibProfileRow, LibProfileSummary, StackRuleRow, ArchitectSearchResult, ArchitectResultKind,
     ProjectProfileRow, ProjectProfileSummary, ArchDecisionRow, ArchPatternRow,
 };
 
@@ -480,7 +480,15 @@ impl super::Database {
 
         Ok(rows
             .into_iter()
-            .map(|(id, kind, text, score)| ArchitectSearchResult { id, kind, text, score })
+            .filter_map(|(id, kind, text, score)| {
+                match kind.parse::<ArchitectResultKind>() {
+                    Ok(k) => Some(ArchitectSearchResult { id, kind: k, text, score }),
+                    Err(e) => {
+                        tracing::warn!(kind, error = %e, "unknown architect result kind from DB, skipping");
+                        None
+                    }
+                }
+            })
             .collect())
     }
 }

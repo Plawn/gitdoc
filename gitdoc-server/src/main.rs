@@ -1,127 +1,95 @@
-use gitdoc_server::{AppState, config, db, embeddings, search};
+use gitdoc_server::{AppState, config::RootConfig, llm_executor};
 use r2e::prelude::*;
 use r2e::r2e_grpc::{GrpcServer, AppBuilderGrpcExt};
 use r2e::r2e_openapi::{OpenApiConfig, OpenApiPlugin};
+use r2e::r2e_prometheus::Prometheus;
 use tower_http::trace::TraceLayer;
-use std::sync::Arc;
+
+use gitdoc_server::producers::{
+    CreateConfig, CreateDatabase, CreateSearchIndex, CreateEmbedder, CreateLlmClient,
+};
+
+use gitdoc_server::api::{
+    repos::RepoController,
+    cheatsheet::CheatsheetController,
+    snapshots::SnapshotController,
+    symbols::{SnapshotSymbolController, SymbolController},
+    search::{SearchController, AdminController},
+    converse::ConverseController,
+    summaries::SummaryController,
+    explain::ExplainController,
+    public_api::PublicApiController,
+    module_tree::ModuleTreeController,
+    type_context::TypeContextController,
+    architect::{
+        ArchitectLibController,
+        ArchitectRuleController,
+        ArchitectAdviseController,
+        ArchitectCompareController,
+        ArchitectProjectController,
+        ArchitectDecisionController,
+        ArchitectPatternController,
+    },
+};
+
+use gitdoc_server::grpc::{
+    repos::RepoGrpcService,
+    snapshots::SnapshotGrpcService,
+    symbols::SymbolGrpcService,
+    search::SearchGrpcService,
+    analysis::AnalysisGrpcService,
+    converse::ConverseGrpcService,
+    cheatsheet::CheatsheetGrpcService,
+    architect::ArchitectGrpcService,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cfg = config::Config::load();
-
+    // Tracing must init before config loading — read log_format from env directly.
+    let log_format = std::env::var("GITDOC_LOG_FORMAT").unwrap_or_else(|_| "text".into());
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "info".into());
 
-    if cfg.log_format == "json" {
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .json()
-            .init();
+    if log_format == "json" {
+        tracing_subscriber::fmt().with_env_filter(env_filter).json().init();
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 
-    let database = db::Database::connect(&cfg.database_url).await?;
-    let search_index = search::SearchIndex::open(&cfg.index_path)?;
+    // Prometheus with LLM collectors
+    let mut prometheus_builder = Prometheus::builder()
+        .namespace("gitdoc")
+        .exclude_path("/health")
+        .exclude_path("/metrics");
 
-    let embedder: Option<Arc<dyn embeddings::EmbeddingProvider>> = match &cfg.embedding {
-        Some(ecfg) => {
-            match embeddings::create_provider(ecfg) {
-                Ok(provider) => {
-                    tracing::info!(provider = %ecfg.provider, "embedding provider initialized");
-                    Some(Arc::from(provider))
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to create embedding provider, continuing without embeddings");
-                    None
-                }
-            }
-        }
-        None => {
-            tracing::info!("no embedding provider configured (set COHERE_KEY or OPENAI_API_KEY)");
-            None
-        }
-    };
+    for collector in llm_executor::llm_collectors() {
+        prometheus_builder = prometheus_builder.register(collector);
+    }
 
-    let llm_client: Option<Arc<llm_ai::OpenAiCompatibleClient>> = match &cfg.llm {
-        Some(llm_cfg) => {
-            match llm_ai::ClientProvider::from_config(&[llm_cfg.engine.clone()]) {
-                Ok(provider) => {
-                    let client = provider.get("gitdoc-llm");
-                    if client.is_some() {
-                        tracing::info!(
-                            endpoint = %llm_cfg.engine.endpoint,
-                            model = ?llm_cfg.engine.deployment,
-                            "LLM provider initialized"
-                        );
-                    }
-                    client
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to create LLM provider, continuing without LLM");
-                    None
-                }
-            }
-        }
-        None => {
-            tracing::info!("no LLM provider configured (set GITDOC_LLM_ENDPOINT)");
-            None
-        }
-    };
+    let prometheus = prometheus_builder.build();
 
-    let bind_addr = cfg.bind_addr;
+    // Read bind_addr from env before it's consumed by the DI graph
+    let bind_addr = std::env::var("GITDOC_BIND_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:3000".into());
 
-    let state = AppState {
-        db: Arc::new(database),
-        search: Arc::new(search_index),
-        embedder,
-        llm_client,
-        config: Arc::new(cfg),
-    };
-
-    use gitdoc_server::api::{
-        repos::RepoController,
-        cheatsheet::CheatsheetController,
-        snapshots::SnapshotController,
-        symbols::{SnapshotSymbolController, SymbolController},
-        search::{SearchController, AdminController},
-        converse::ConverseController,
-        summaries::SummaryController,
-        explain::ExplainController,
-        public_api::PublicApiController,
-        module_tree::ModuleTreeController,
-        type_context::TypeContextController,
-        architect::{
-            ArchitectLibController,
-            ArchitectRuleController,
-            ArchitectAdviseController,
-            ArchitectCompareController,
-            ArchitectProjectController,
-            ArchitectDecisionController,
-            ArchitectPatternController,
-        },
-    };
-
-    use gitdoc_server::grpc::{
-        repos::RepoGrpcService,
-        snapshots::SnapshotGrpcService,
-        symbols::SymbolGrpcService,
-        search::SearchGrpcService,
-        analysis::AnalysisGrpcService,
-        converse::ConverseGrpcService,
-        cheatsheet::CheatsheetGrpcService,
-        architect::ArchitectGrpcService,
-    };
-
-    // Health check as a plain route
-    let health_route = Router::new()
-        .route("/health", r2e::http::routing::get(|| async { "ok" }));
-
-    AppBuilder::new()
+    let builder = AppBuilder::new()
+        .plugin(prometheus)
         .plugin(GrpcServer::multiplexed())
-        .with_state(state)
+        // Config: load application.yaml → RootConfig → GitdocConfig (auto-registered)
+        .load_config::<RootConfig>()
+        // Producers: construct components via DI
+        .with_producer::<CreateConfig>()
+        .with_producer::<CreateDatabase>()
+        .with_producer::<CreateSearchIndex>()
+        .with_producer::<CreateEmbedder>()
+        .with_producer::<CreateLlmClient>()
+        // Resolve bean graph → build AppState
+        .build_state::<AppState, _, _>()
+        .await;
+
+    builder
+        // Post-state plugins
+        .with(Health)
         .with(OpenApiPlugin::new(
             OpenApiConfig::new("GitDoc API", "0.1.0")
                 .with_description("Code intelligence server for LLM agents")
@@ -157,12 +125,10 @@ async fn main() -> anyhow::Result<()> {
         .register_grpc_service::<ConverseGrpcService>()
         .register_grpc_service::<CheatsheetGrpcService>()
         .register_grpc_service::<ArchitectGrpcService>()
-        // Plain routes
-        .merge_router(health_route)
         // Layers
         .with_layer(TraceLayer::new_for_http())
         // Serve
-        .serve(&bind_addr.to_string())
+        .serve(&bind_addr)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
